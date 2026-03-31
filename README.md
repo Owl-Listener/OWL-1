@@ -1,6 +1,6 @@
 # OWL-1
 
-A design prototype for orchestrating AI design agents. Built by [Designpowers](https://designpowers.com).
+A design prototype for orchestrating AI design agents. Built by MC Dean.
 
 OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you can watch ten agents think, intervene when they need you, and stay oriented in a complex creative process.
 
