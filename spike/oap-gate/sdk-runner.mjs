@@ -54,6 +54,13 @@ export class InputQueue {
     if (this._closed) return Promise.resolve({ value: undefined, done: true });
     return new Promise((resolve) => this._waiters.push(resolve));
   }
+  // Non-blocking: take everything queued right now (used by the Gemini runner to
+  // fold director steering in between turns without awaiting).
+  drain() {
+    const out = this._items;
+    this._items = [];
+    return out;
+  }
   [Symbol.asyncIterator]() {
     return this;
   }

@@ -24,6 +24,17 @@ Want to look around without a key (or any spend)? `npm run demo` runs the same U
 
 OWL-1 (front end) and Designpowers (agents) talk over the **OWL Agent Protocol** ([`docs/owl-agent-protocol.md`](docs/owl-agent-protocol.md)). The backend runs Designpowers headless via the Claude Agent SDK and translates the live run into OAP events the UI renders; OWL-1's **APPROVE** button is the SDK's per-handoff permission gate — a `PreToolUse` hook that pauses each subagent dispatch until you approve. Backend internals live in `spike/oap-gate/`.
 
+### Run on Gemini instead of Claude
+
+Because the UI only speaks OAP, the model provider is a swappable backend. Run on Google Gemini:
+
+```bash
+export GEMINI_API_KEY=...
+OWL_BACKEND=gemini npm start      # default backend is Claude
+```
+
+On Gemini, OWL-1 *is* the orchestrator: a lead model dispatches each subagent via a function call, OWL-1 gates that call for your approval (Gemini's CLI is being retired, and owning the function-calling loop is the only durable way to pause for approval), and subagents run as their own Gemini calls that write real files. Same UI, same gate, same protocol — only the runner differs (`spike/oap-gate/gemini-runner.mjs`). Note: it's our own orchestration of the Designpowers markdown (not a native runtime), and output will differ from Claude.
+
 ## What's in here
 
 ```

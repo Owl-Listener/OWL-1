@@ -14,6 +14,11 @@ import { dirname, join, extname, normalize } from 'node:path';
 import { OapSession } from './oap.mjs';
 import { GateController } from './gate-controller.mjs';
 import { runDesignpowers, InputQueue } from './sdk-runner.mjs';
+import { runDesignpowersGemini } from './gemini-runner.mjs';
+
+// OWL_BACKEND=gemini runs Designpowers on Google Gemini; default is Claude.
+const BACKEND = (process.env.OWL_BACKEND || 'claude').toLowerCase();
+const runDesign = BACKEND === 'gemini' ? runDesignpowersGemini : runDesignpowers;
 
 const PORT = process.env.PORT || 4318;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -56,7 +61,7 @@ function startRun(brief, mode = 'human') {
   });
   // OWL-1 is the onboarding UI, so always skip Designpowers' text welcome and
   // blocking questions; `mode` still controls the per-handoff approval gate.
-  runDesignpowers({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true });
+  runDesign({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true });
 }
 
 // New Project: drop the current run so the next brief starts a fresh one.
@@ -177,8 +182,9 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  const keyed = !!process.env.ANTHROPIC_API_KEY;
-  console.log(`OWL-1 × Designpowers (real) → http://localhost:${PORT}/?source=live`);
-  console.log(keyed ? '✓ ANTHROPIC_API_KEY detected.' : '⚠ No ANTHROPIC_API_KEY — set it and restart to run real agents.');
+  const keyVar = BACKEND === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+  const keyed = !!process.env[keyVar] || (BACKEND === 'gemini' && !!process.env.GOOGLE_API_KEY);
+  console.log(`OWL-1 × Designpowers (${BACKEND}) → http://localhost:${PORT}/?source=live`);
+  console.log(keyed ? `✓ ${keyVar} detected.` : `⚠ No ${keyVar} — set it and restart to run real agents.`);
   console.log('Type your brief into OWL-1 to start directing the team.');
 });
