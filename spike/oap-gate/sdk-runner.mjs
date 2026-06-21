@@ -73,7 +73,7 @@ export class InputQueue {
 //   mode      : 'human' (approve each handoff) | 'auto'
 //   workspace : path to .dp-workspace (cwd the SDK loads Designpowers from)
 //   inputQueue: InputQueue the UI feeds director messages into (mid-run steering)
-export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0 }) {
+export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0, signal = null }) {
   let query;
   try {
     ({ query } = await import('@anthropic-ai/claude-agent-sdk'));
@@ -234,6 +234,10 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
 
   try {
     for await (const msg of query({ prompt: prompt(), options })) {
+      // Cancel (Recover): stop consuming, which unwinds the SDK query. Claude reports
+      // at turn boundaries, so this is best-effort mid-step; it always stops further
+      // dispatch and ends the run.
+      if (signal?.aborted) break;
       translate(msg, session, () => currentAgent);
       // A `result` marks the end of the orchestrator's pass. Close the input stream
       // so the run completes (and emits run.finished) instead of hanging open

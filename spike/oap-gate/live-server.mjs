@@ -41,6 +41,7 @@ let gates = null;
 let inputQueue = null;
 let running = false;
 let runGen = 0; // bumps on reset so a stale run's events stop broadcasting
+let currentAbort = null; // AbortController for the in-flight run (Recover)
 
 function broadcast(env) {
   const line = `data: ${JSON.stringify(env)}\n\n`;
@@ -51,6 +52,7 @@ function startRun(brief, mode = 'human', cap = 0) {
   if (running) return;
   running = true;
   const gen = ++runGen;
+  currentAbort = new AbortController();
   session = new OapSession(`run_${Date.now()}`);
   gates = new GateController();
   inputQueue = new InputQueue();
@@ -62,14 +64,26 @@ function startRun(brief, mode = 'human', cap = 0) {
   // OWL-1 is the onboarding UI, so always skip Designpowers' text welcome and
   // blocking questions; `mode` still controls the per-handoff approval gate.
   // `cap` is the spend ceiling in USD (0 = none) — the run stops when reached.
-  runDesign({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true, cap: Number(cap) || 0 });
+  // `signal` lets the director cancel the run mid-flight (Recover).
+  runDesign({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true, cap: Number(cap) || 0, signal: currentAbort.signal });
 }
 
-// New Project: drop the current run so the next brief starts a fresh one.
-function resetRun() {
-  runGen++; // stale events from any in-flight run are now ignored
+// Recover: cancel the in-flight run — abort the model work (so it stops costing),
+// close the input stream, and tell the UI it's over. The aborted runner's own
+// events are dropped by the generation bump.
+function cancelRun() {
+  if (!running) return;
+  if (session) session.emitEvent('message', { id: 'msg_cancel', kind: 'system', text: '⏹ Run cancelled.' });
+  if (currentAbort) { try { currentAbort.abort(); } catch {} }
   if (inputQueue) inputQueue.close();
+  runGen++; // further events from the aborted runner are now ignored
   running = false;
+  broadcast({ v: 1, type: 'run.finished', seq: 0, ts: new Date().toISOString(), payload: { summary: 'Run cancelled.' } });
+}
+
+// New Project: cancel the current run (if any) so the next brief starts fresh.
+function resetRun() {
+  cancelRun();
   gates = null;
   session = null;
   broadcast({ v: 1, type: 'run.reset', seq: 0, ts: new Date().toISOString(), payload: {} });
@@ -108,6 +122,9 @@ async function handleCommand(cmd) {
   switch (cmd?.type) {
     case 'run.start':
       if (cmd.brief?.trim()) startRun(cmd.brief.trim(), cmd.mode || 'human', cmd.cap);
+      return true;
+    case 'run.cancel':
+      cancelRun();
       return true;
     case 'run.reset':
       resetRun();
