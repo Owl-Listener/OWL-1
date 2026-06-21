@@ -93,7 +93,9 @@ These are the real gaps. Several double as good first issues:
 - **Memory / taste profile** persistence.
 
 **Hardening (toward a real release):**
-- A real test suite around the OAP reducer and the runners, and CI to run it.
+- Broaden the test suite — there's a base suite (`npm test`: OAP reducer, agent
+  mapping, gates, a gated mock run) and CI on every PR; the runners still lack
+  coverage against real API responses.
 - Breaking up `owl-1-prototype.jsx` into modules.
 
 ## Conventions
@@ -101,14 +103,14 @@ These are the real gaps. Several double as good first issues:
 - **Match the surrounding code.** No new frameworks or build steps without discussion.
 - **Keep the sim path working.** Live features are additive and gated by `?source=live`;
   `npm run dev` (no key) must keep working unchanged.
-- **Verify what you can, and say what you verified.** `npm run build` and
-  `npm run spike:test` should pass. If a change needs a real run to confirm, say so in the PR
+- **Verify what you can, and say what you verified.** `npm run build` and `npm test` must
+  pass (CI runs both on every PR). If a change needs a real run to confirm, say so in the PR
   rather than implying it's verified — honesty about what's tested is a core norm here.
 - **Be kind.** Assume good faith; keep discussion constructive.
 
 ## Submitting
 
-1. Branch, make your change, run `npm run build` + `npm run spike:test`.
+1. Branch, make your change, run `npm run build` + `npm test`.
 2. Open a pull request (draft is fine) describing **what** changed and **what you verified**.
 3. Note any follow-ups or known gaps — partial, honest PRs beat polished, overclaimed ones.
 
