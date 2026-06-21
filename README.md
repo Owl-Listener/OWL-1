@@ -2,7 +2,7 @@
 
 A workstation for directing AI design agents. Built by MC Dean.
 
-![OWL-1 directing the Designpowers team — the Design Strategist track paused for your approval](docs/images/owl-1-arrangement-dark.png)
+![OWL-1 directing the Designpowers team — the Design Strategist track paused for your approval](docs/images/owl-1-arrangement.png)
 
 OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you direct a real team of ten [Designpowers](https://github.com/Owl-Listener/designpowers) agents — watch them work, intervene when they need you, and stay oriented in a complex creative process that delivers real design work.
 
