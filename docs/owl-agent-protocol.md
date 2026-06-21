@@ -197,9 +197,10 @@ Read/write; see `memory.update` command.
 | type                | payload                          | drives in OWL-1                          |
 |---------------------|----------------------------------|------------------------------------------|
 | `snapshot`          | full state (all entities below)  | initial hydrate / gap recovery           |
-| `run.started`       | `{ mode, lane, projectId }`      | transport state, project header          |
+| `run.started`       | `{ mode, lane, projectId, capabilities }` | transport state, project header     |
 | `run.mode`          | `{ mode }`                       | `pipelineMode` (auto/human/stop)         |
-| `run.finished`      | `{ summary }`                    | team-presentation / final review         |
+| `run.finished`      | `{ summary }`                    | run ends (completed or cancelled)        |
+| `run.reset`         | `{}`                             | New Project — clears the session         |
 | `stage.changed`     | `Stage`                          | pipeline progress bar / `clock`          |
 | `agent.status`      | `Agent` (partial, by `id`)       | lane status, waveform, Nodes view        |
 | `agent.activity`    | `{ id, activity }` (high-freq)   | live waveform sampling                   |
@@ -208,8 +209,8 @@ Read/write; see `memory.update` command.
 | `artifact.updated`  | `Artifact` (partial, by `id`)    | deliverable status (e.g. → `staged`)     |
 | `blocker.raised`    | `Blocker`                        | blockers panel, lane blocker banner      |
 | `blocker.cleared`   | `{ id }`                         | dismiss blocker                          |
-| `gate.opened`       | `{ agentId, kind, context }`     | approval CTA (`✓ APPROVE + CONTINUE`)    |
-| `gate.closed`       | `{ agentId, resolution }`        | clears the gate                          |
+| `gate.opened`       | `{ gateId, agentId, kind, context }` | approval CTA (`✓ APPROVE + CONTINUE`) |
+| `gate.closed`       | `{ gateId, agentId, resolution }`| clears the gate                          |
 | `telemetry.tick`    | `Telemetry`                      | telemetry view                           |
 | `memory.changed`    | `Memory`                         | memory view                              |
 
@@ -221,22 +222,29 @@ Read/write; see `memory.update` command.
 
 Every command receives a `command.ack {id}` or `command.reject {id, reason}`.
 
-| type              | payload                                | from OWL-1 control                       |
-|-------------------|----------------------------------------|------------------------------------------|
-| `transport.set`   | `{ mode }`                             | transport bar (auto/human/stop)          |
-| `gate.approve`    | `{ agentId }`                          | `onApprove(agent.id)` — continue         |
-| `gate.saveDraft`  | `{ agentId }`                          | `onSaveDraft(agent.id)`                  |
-| `agent.correct`   | `{ agentId, text }`                    | "Use my design system instead"           |
-| `agent.add`       | `{ agentId, text }`                    | "Also handle dark mode"                  |
-| `agent.redirect`  | `{ fromAgentId, toAgentId, text }`     | "Send this back to design-strategist"    |
-| `agent.skip`      | `{ agentId }`                          | "Skip motion, go straight to builder"    |
-| `agent.ask`       | `{ agentId, text }`                    | "design-lead, why frosted glass?"        |
-| `blocker.dismiss` | `{ id }`                               | blocker `×`                              |
-| `artifact.approve`| `{ id }`                               | staged → approved (review CTA)           |
-| `memory.update`   | `{ section, entries }`                 | memory edits                             |
-| `snapshot.request`| `{}`                                   | gap recovery                             |
+Implemented today (✓) vs. designed-but-not-yet-wired (◦):
 
-The six `agent.*` steering commands map directly to Designpowers' creative-director moves
+| type              | payload                            | from OWL-1 control                       |     |
+|-------------------|------------------------------------|------------------------------------------|-----|
+| `run.start`       | `{ brief, mode, cap }`             | director's first message → start a run   | ✓   |
+| `run.cancel`      | `{}`                               | transport STOP — abort the run (Recover) | ✓   |
+| `run.reset`       | `{}`                               | New Project — cancel + clear             | ✓   |
+| `agent.create`    | `{ agent: { name, role, stage, handsTo, prompt } }` | Create-Agent form       | ✓   |
+| `agent.ask`       | `{ text }`                         | director chat — steer the running team   | ✓   |
+| `gate.approve`    | `{ gateId }`                       | `✓ APPROVE + CONTINUE` on a handoff      | ✓   |
+| `gate.skip`       | `{ gateId, note }`                 | skip a handoff                           | ✓   |
+| `agent.correct`   | `{ text }`                         | "Use my design system instead"           | ◦¹  |
+| `agent.add`       | `{ text }`                         | "Also handle dark mode"                  | ◦¹  |
+| `agent.redirect`  | `{ fromAgentId, toAgentId, text }` | "Send this back to design-strategist"    | ◦   |
+| `blocker.dismiss` | `{ id }`                           | blocker `×`                              | ◦   |
+| `artifact.approve`| `{ id }`                           | staged → approved (review CTA)           | ◦   |
+| `memory.update`   | `{ section, entries }`             | memory edits                             | ◦   |
+| `snapshot.request`| `{}`                               | gap recovery                             | ◦   |
+
+¹ `agent.correct`/`agent.add` are accepted by the server today but routed the same as
+`agent.ask` (folded into the run as director input); dedicated handling is future work.
+
+The `agent.*` steering commands map to Designpowers' creative-director moves
 (approve / correct / add / redirect / skip / talk-to-agent).
 
 ---
@@ -291,23 +299,30 @@ Designpowers is markdown (skills + agents + hooks) whose **orchestrator is the L
 (Claude Code / Gemini / any agent runtime). There is no server emitting typed events, so
 the adapter derives OAP events from three real sources:
 
-### 1. Runtime: Claude Agent SDK (headless)
+### 1. Runtime: two implemented backends
 
-Run the Designpowers skills/agents via the Agent SDK rather than the interactive CLI. The
-SDK provides the seams OAP needs:
+OWL-1 ships two backends (`spike/oap-gate/`), selected by `OWL_BACKEND`; both emit the same OAP.
+
+**Claude** (`sdk-runner.mjs`) — runs Designpowers headless via the Claude Agent SDK:
 
 | OAP need                     | SDK mechanism                                              |
 |------------------------------|-----------------------------------------------------------|
-| `agent.status` running/done  | subagent (Task) lifecycle + `PreToolUse`/`SubagentStop` hooks |
-| `gate.opened` / Human mode   | **`canUseTool` permission callback** — pause on the next Task dispatch until the UI sends `gate.approve` |
+| `agent.status` running/done  | subagent (Task/Agent) dispatch + `PreToolUse`/`SubagentStop` hooks |
+| `gate.opened` / Human mode   | a **`PreToolUse` hook** on the dispatch tool pauses until the UI sends `gate.approve` |
 | `message` (babble/narration) | streamed assistant text + `PostToolUse` on `design-state.md` writes |
-| `telemetry.tick`             | SDK usage reporting (real input/output tokens, cost)      |
-| `steer` commands             | SDK input streaming (inject correction into the run)      |
+| `telemetry.tick`             | SDK usage reporting (real tokens; cost reported at the end of a turn) |
+| `steer` commands             | SDK input streaming (inject director messages into the run) |
 
-> **`canUseTool` is the linchpin:** when the orchestrator tries to dispatch the next agent,
-> the SDK asks the adapter for permission → the adapter emits `gate.opened` → the user
-> clicks **✓ APPROVE + CONTINUE** in OWL-1 → `gate.approve` resolves the callback. OWL-1's
-> approval button *is* Designpowers' "pause for user."
+> **The gate is a `PreToolUse` hook, not `canUseTool`.** In the Claude Code runtime, tool
+> permissioning flows through `PreToolUse` — verified empirically, `canUseTool` is never
+> called. The hook awaits OWL-1's approval before the dispatch proceeds; OWL-1's APPROVE
+> button *is* Designpowers' "pause for user."
+
+**Gemini** (`gemini-runner.mjs`) — the Gemini CLI is being retired and can't gate cleanly, so
+OWL-1 owns the function-calling loop: a lead model dispatches each subagent via a function
+call, the runner pauses *before executing* it for approval (using the same `gates` +
+`gate.opened`/`gate.approve`), and subagents run as their own Gemini calls with sandboxed
+file tools. See the runner and the README's "Run on Gemini" section.
 
 ### 2. Source of truth: `design-state.md`
 
@@ -357,9 +372,9 @@ motion-designer, design-builder, design-critic, accessibility-reviewer, heuristi
 - **State is inferred, not declared.** Stage/activity come from hook events + parsing
   narration and `design-state.md`. Mark these `confidence: "inferred"`. The Pipeline status
   table makes agent-level status fairly reliable; sub-agent "% done" is approximate.
-- **Steering (`agent.correct/redirect/add`) is the real engineering.** `canUseTool` cleanly
-  handles approve/deny; injecting free-text corrections mid-run needs SDK input streaming.
-  Prototype this first to de-risk.
+- **Steering is the real engineering.** The `PreToolUse` gate cleanly handles approve/deny;
+  injecting free-text corrections mid-run uses SDK input streaming (wired) but dedicated
+  `correct`/`redirect`/`add` handling beyond "fold into the run" is future work.
 
 ---
 
@@ -375,10 +390,18 @@ motion-designer, design-builder, design-critic, accessibility-reviewer, heuristi
 
 ---
 
-## First milestones
+## Implementation status
 
-1. **This doc** — the contract. ✅ (v0.1)
-2. **`canUseTool` gate spike** — SDK runs a 2-agent Designpowers slice headless → pauses at
-   the handoff → a stub UI sends `gate.approve` → it continues. Proves the whole thesis.
-3. **Frontend decoupling** — replace the sine-curve `clock` engine in
-   `src/owl-1-prototype.jsx` with a pluggable OAP event source feeding the same state shapes.
+The original milestones are all built (see `spike/oap-gate/` and `src/oap/`):
+
+1. ✅ **This doc** — the contract (v0.1).
+2. ✅ **Gate spike** — the offline mock proof (`spike/oap-gate/`): a runner pauses at the
+   handoff until a UI approval arrives.
+3. ✅ **Frontend decoupling** — `src/owl-1-prototype.jsx` reads a pluggable OAP source
+   (`src/oap/`) gated by `?source=live`; the sine-curve sim remains the offline default.
+4. ✅ **Real backends** — `sdk-runner.mjs` (Claude, `PreToolUse` gate) and `gemini-runner.mjs`
+   (Gemini, own-the-loop), selected by `OWL_BACKEND`.
+5. ✅ **Govern + Recover** — pre-run spend cap (`run.start { cap }`) and cancel (`run.cancel`).
+
+Still open: real blockers parsed from Designpowers safeguards, agent-initiated questions,
+memory persistence, and broader runner test coverage. See `CONTRIBUTING.md`.

@@ -34,15 +34,20 @@ Then open **http://localhost:4318/?source=live** in your browser.
 ## Direct your team
 
 1. **Type what you want to design** in the chat at the top (e.g. *"A calm cookie-consent
-   banner that makes 'reject' as easy as 'accept'"*). That's your brief — it starts the run.
-2. **Watch the lanes light up** as each agent works — research, strategy, taste, content,
+   banner that makes 'reject' as easy as 'accept'"*). That's your brief.
+2. **Set a spend cap and start.** A confirmation shows a rough cost estimate and a **spend
+   cap** — the run stops if it reaches it. Adjust it, then **Start run**. (Nothing paid
+   happens until you confirm.)
+3. **Watch the lanes light up** as each agent works — research, strategy, taste, content,
    visual design, motion, build, and the reviewers. Their handoff notes stream in the
    chatter panel on the right.
-3. **Approve each handoff.** When an agent is ready to hand to the next, its lane opens
-   with **✓ APPROVE + CONTINUE**. You're the creative director — nothing proceeds until
-   you say so.
-4. **Steer anytime.** Type into the chat to redirect: *"Make it warmer,"* *"Design Lead,
-   why frosted glass?"*, *"Skip motion,"* *"Also handle dark mode."* Your word wins.
+4. **Approve each handoff** (HUMAN mode). When an agent is ready to hand to the next, its
+   lane opens with **✓ APPROVE + CONTINUE** — nothing proceeds until you say so. (In AUTO
+   mode the team runs without pausing.)
+5. **Steer anytime.** Type into the chat to redirect: *"Make it warmer,"* *"Design Lead,
+   why frosted glass?"*, *"Also handle dark mode."* Your word wins.
+6. **Stop anytime.** The transport **STOP** cancels the run and halts the model work (so it
+   stops costing). **+ NEW PROJECT** clears it for a fresh brief.
 
 The design output and `design-state.md` are written into `.dp-workspace/` as the team works.
 
