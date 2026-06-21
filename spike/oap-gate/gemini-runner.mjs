@@ -42,7 +42,7 @@ function fail(session, text) {
   session.emitEvent('run.finished', { summary: 'Could not start Gemini run.' });
 }
 
-export async function runDesignpowersGemini({ session, gates, brief, mode, workspace, inputQueue, automated = false }) {
+export async function runDesignpowersGemini({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0 }) {
   let GoogleGenAI;
   try {
     ({ GoogleGenAI } = await import('@google/genai'));
@@ -66,12 +66,21 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
     session.emitEvent('agent.status', { id, name: prettyName(id), stage: STAGE_BY_AGENT[id], status: AgentStatus.IDLE, confidence: 'inferred' });
   }
 
-  let totalIn = 0, totalOut = 0;
+  let totalIn = 0, totalOut = 0, capped = false;
+  const cumCost = () => totalIn * rate.in + totalOut * rate.out;
   const addUsage = (u, agentId) => {
     if (!u) return;
     const i = u.promptTokenCount || 0, o = u.candidatesTokenCount || 0;
     totalIn += i; totalOut += o;
     session.emitEvent('telemetry.tick', { agentId, inputTokens: i, outputTokens: o, costUsd: i * rate.in + o * rate.out });
+  };
+  // Spend cap (USD): stop before the next dispatch once cumulative cost reaches it.
+  const overCap = () => cap > 0 && cumCost() >= cap;
+  const flagCap = () => {
+    if (capped) return; capped = true;
+    const spent = cumCost();
+    session.emitEvent('blocker.raised', { id: 'blk_cap', agent: 'design-lead', severity: 'warn', text: `Spend cap reached ($${spent.toFixed(2)} / $${cap.toFixed(2)}) — run stopped.`, cta: 'RESOLVE' });
+    session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `⚠ Spend cap of $${cap.toFixed(2)} reached ($${spent.toFixed(2)}). Stopping the run.` });
   };
 
   // --- file tools given to subagents (sandboxed to the workspace) ---
@@ -149,6 +158,7 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
   const contents = [{ role: 'user', parts: [{ text: brief }] }];
   try {
     for (let turn = 0; turn < 14; turn++) {
+      if (overCap()) { flagCap(); break; }
       const res = await ai.models.generateContent({ model: MODEL, contents, config: { systemInstruction: orchSys, tools: dispatchTool } });
       addUsage(res.usageMetadata, 'design-lead');
       const parts = partsOf(res);
@@ -163,6 +173,12 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
         if (call.name !== 'dispatch_agent') { responses.push({ functionResponse: { name: call.name, response: { error: 'unknown tool' } } }); continue; }
         const agentId = call.args?.agent;
         const subBrief = call.args?.brief || brief;
+
+        if (overCap()) {
+          flagCap();
+          responses.push({ functionResponse: { name: 'dispatch_agent', response: { result: 'Spend cap reached — not dispatched.' } } });
+          continue;
+        }
 
         let allowed = true;
         if (mode === 'human') {
