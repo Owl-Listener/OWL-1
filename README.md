@@ -2,6 +2,8 @@
 
 A workstation for directing AI design agents. Built by MC Dean.
 
+![OWL-1 directing the Designpowers team — the Design Strategist track paused for your approval](docs/images/owl-1-arrangement-dark.png)
+
 OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you direct a real team of ten [Designpowers](https://github.com/Owl-Listener/designpowers) agents — watch them work, intervene when they need you, and stay oriented in a complex creative process that delivers real design work.
 
 ## Run it
@@ -80,9 +82,15 @@ Three transport modes: Auto (agents run freely), Human (you approve each step), 
 
 **Arrangement** is the main workspace: agent swim lanes with live waveforms, a project header with agent banter, deliverables, and blockers that route you to the right agent with a clear CTA.
 
+![Arrangement view](docs/images/owl-1-arrangement.png)
+
 **Agents** is the full directory: profiles, capabilities, handoff maps, pipeline stage, and management controls for each agent.
 
+![Agents console](docs/images/owl-1-agents.png)
+
 **Nodes** is a spatial view of the agent network: who hands off to whom, with particles flowing along active edges.
+
+![Nodes view — the agent network](docs/images/owl-1-nodes.png)
 
 The left nav gives you Projects, Tracks, Memory (editable taste profile and design context), and Telemetry (token usage, cost, latency). Guide lives at the bottom.
 
