@@ -66,7 +66,7 @@ export class InputQueue {
 //   mode      : 'human' (approve each handoff) | 'auto'
 //   workspace : path to .dp-workspace (cwd the SDK loads Designpowers from)
 //   inputQueue: InputQueue the UI feeds director messages into (mid-run steering)
-export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue }) {
+export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue, automated = false }) {
   let query;
   try {
     ({ query } = await import('@anthropic-ai/claude-agent-sdk'));
@@ -117,33 +117,35 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
   // canUseTool: allow everything EXCEPT subagent dispatch in human mode, which we
   // gate. Returning a Promise holds the agentic loop until OWL-1 approves — this is
   // Designpowers' Direct mode, expressed through OWL-1's APPROVE button.
+  // NOTE: in the Claude Code runtime, tool permissioning flows through PreToolUse
+  // hooks, not canUseTool (verified empirically — canUseTool is called 0 times).
+  // So the handoff GATE and dispatch detection live in the PreToolUse hook below.
+  // canUseTool is kept only as a harmless fallback + to skip interactive questions
+  // in automated runs.
   const canUseTool = async (tool, input) => {
-    const isDispatch = tool === 'Task' || tool === 'Agent';
-    if (!isDispatch || mode !== 'human') {
-      if (isDispatch) announceDispatch(input);
-      return { behavior: 'allow', updatedInput: input };
+    if (automated && tool === 'AskUserQuestion') {
+      return { behavior: 'deny', message: 'Automated run — proceed using the brief; do not ask.' };
     }
-    const agentId = input.subagent_type || 'agent';
-    announce(agentId);
-    const { id, decision } = gates.request({ tool, input });
-    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.AWAITING, waiting: 'AWAITING INPUT', confidence: 'inferred' });
-    session.emitEvent('gate.opened', { gateId: id, agentId, kind: 'handoff', stage: STAGE_BY_AGENT[agentId], context: `Dispatch ${prettyName(agentId)}?` });
-    const d = await decision;
-    session.emitEvent('gate.closed', { gateId: id, agentId, resolution: d.action });
-    if (d.action === 'approve') {
-      announceDispatch(input);
-      return { behavior: 'allow', updatedInput: input };
-    }
-    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.SKIPPED, confidence: 'inferred' });
-    return { behavior: 'deny', message: d.note || `Skipped ${prettyName(agentId)} by director.` };
+    return { behavior: 'allow', updatedInput: input };
   };
 
-  function announceDispatch(input) {
-    const agentId = input.subagent_type || 'agent';
+  function announceDispatch(agentId) {
     announce(agentId);
     currentAgent = agentId;
     session.emitEvent('stage.changed', { id: STAGE_BY_AGENT[agentId], active: true });
     session.emitEvent('agent.status', { id: agentId, status: AgentStatus.RUNNING, activity: 0.9, confidence: 'inferred' });
+  }
+
+  // The handoff gate, run from PreToolUse. In human mode it pauses the dispatch
+  // (the hook is awaited) until OWL-1 sends approval. Returns 'allow' | 'deny'.
+  async function gateDispatch(agentId) {
+    announce(agentId);
+    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.AWAITING, waiting: 'AWAITING INPUT', confidence: 'inferred' });
+    const { id, decision } = gates.request({ agentId });
+    session.emitEvent('gate.opened', { gateId: id, agentId, kind: 'handoff', stage: STAGE_BY_AGENT[agentId], context: `Dispatch ${prettyName(agentId)}?` });
+    const d = await decision;
+    session.emitEvent('gate.closed', { gateId: id, agentId, resolution: d.action });
+    return d.action === 'approve' ? 'allow' : 'deny';
   }
 
   const options = {
@@ -155,14 +157,48 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
       'You are orchestrating the Designpowers team inside OWL-1. Run the using-designpowers ' +
       'workflow. When you hand off between agents, write the short conversational babble ' +
       'addressed to the next agent by name, as Designpowers specifies. Keep the design-state.md ' +
-      'updated. The human directing you is the creative director — incorporate their messages.',
+      'updated. The human directing you is the creative director — incorporate their messages.' +
+      (automated
+        ? ' AUTOMATED RUN: do not show the welcome screen or walkthrough, and do not ask ' +
+          'clarifying questions — treat the first message as the already-approved brief and ' +
+          'begin the build pipeline immediately, dispatching subagents via the Task tool ' +
+          '(design-scout, design-strategist, design-lead, design-builder, and the reviewers). ' +
+          'Write decisions and the handoff chain into design-state.md as you go.'
+        : ''),
     hooks: {
+      // Dispatch detection + handoff gate. tool=Agent, tool_input.subagent_type.
+      PreToolUse: [
+        {
+          matcher: 'Agent|Task',
+          hooks: [
+            async (hookInput) => {
+              const agentId = hookInput?.tool_input?.subagent_type || 'agent';
+              if (mode === 'human') {
+                const verdict = await gateDispatch(agentId);
+                if (verdict === 'deny') {
+                  session.emitEvent('agent.status', { id: agentId, status: AgentStatus.SKIPPED, confidence: 'inferred' });
+                  return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Skipped by director.' } };
+                }
+              }
+              announceDispatch(agentId);
+              return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } };
+            },
+          ],
+        },
+      ],
+      // Subagent finished. Real fields: agent_type, last_assistant_message.
       SubagentStop: [
         {
           hooks: [
             async (hookInput) => {
-              const id = hookInput?.subagent_type || hookInput?.agent_id || currentAgent;
-              if (id) session.emitEvent('agent.status', { id, status: AgentStatus.DONE, activity: 0, confidence: 'inferred' });
+              const id = hookInput?.agent_type || hookInput?.subagent_type || currentAgent;
+              if (!id) return {};
+              const last = hookInput?.last_assistant_message;
+              const text = typeof last === 'string' ? last : last?.content?.find?.((b) => b.type === 'text')?.text;
+              if (text && text.trim()) {
+                session.emitEvent('message', { id: nextMessageId(), kind: 'handoff', from: id, to: null, text: text.trim().slice(0, 600), stage: STAGE_BY_AGENT[id] });
+              }
+              session.emitEvent('agent.status', { id, status: AgentStatus.DONE, activity: 0, confidence: 'inferred' });
               return {};
             },
           ],

@@ -83,4 +83,6 @@ The left nav gives you Projects, Tracks, Memory (editable taste profile and desi
 
 ## Status
 
-Alpha. Two ways to run: the **real** path (`npm start`) drives live Designpowers agents via the Claude Agent SDK and produces real design work; the **prototype** path (`npm run dev`) is the original simulated design artifact. The real backend is new and best-effort — the SDK message/hook field shapes are the thing to confirm on your first run (see `spike/oap-gate/sdk-runner.mjs`). Treat it as a working alpha, not a hardened product.
+Alpha. Two ways to run: the **real** path (`npm start`) drives live Designpowers agents via the Claude Agent SDK and produces real design work; the **prototype** path (`npm run dev`) is the original simulated design artifact.
+
+The real path has been validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`. Known limitations: agent-*initiated* questions are skipped for now (the designer steers via the chat instead), and the right-panel blockers/deliverables/telemetry aren't fully wired to live data yet. A working alpha, not a hardened product.

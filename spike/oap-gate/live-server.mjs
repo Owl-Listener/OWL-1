@@ -48,7 +48,9 @@ function startRun(brief, mode = 'human') {
     broadcast(env);
     if (env.type === 'run.finished') running = false;
   });
-  runDesignpowers({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue });
+  // OWL-1 is the onboarding UI, so always skip Designpowers' text welcome and
+  // blocking questions; `mode` still controls the per-handoff approval gate.
+  runDesignpowers({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true });
 }
 
 function handleCommand(cmd) {
