@@ -46,6 +46,21 @@ Then open **http://localhost:4318/?source=live** in your browser.
 
 The design output and `design-state.md` are written into `.dp-workspace/` as the team works.
 
+## What to expect (pace + cost)
+
+Real agents do real work, so this is not instant:
+
+- **Give it time.** A full run takes roughly **10–20 minutes** — each agent genuinely
+  researches, designs, and builds (the builder writing real HTML is the slow part). The
+  lanes and chatter update live so you can watch progress; it's working even when a single
+  agent is "thinking" for a while.
+- **AUTO vs HUMAN.** In **HUMAN** mode (the default) it pauses at every handoff for your
+  approval — most control, most clicking. Switch the transport to **AUTO** before you send
+  the brief to let the team run hands-free and review at the end. Tip: start in AUTO for
+  your first run so you can see the whole pipeline without babysitting it.
+- **It costs real money.** A run uses your Anthropic credit — a lean POC is on the order of
+  ~$1; a full multi-agent run with reviewers is more. Start small.
+
 ## Just want to look around first? (no key, no cost)
 
 ```bash
