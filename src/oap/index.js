@@ -5,5 +5,5 @@
 export { initialOapState, oapReduce, oapReduceAll } from './reducer.js';
 export { OWL_ID_BY_OAP, OAP_ID_BY_OWL, owlIdFor, oapIdFor, activityForStatus, deriveOwlAgents } from './agentMap.js';
 export { liveRuntime, setLiveRuntime, resetLiveRuntime } from './runtime.js';
-export { createSseSource, createReplaySource } from './source.js';
+export { createSseSource, createReplaySource, postCommand } from './source.js';
 export { useOapRuntime } from './useOapRuntime.js';

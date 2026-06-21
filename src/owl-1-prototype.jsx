@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
-import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP } from "./oap/index.js";
+import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, postCommand } from "./oap/index.js";
 
 // === CUSTOM SCROLLBAR + PSEUDO-SELECTOR STYLES ===
 // Injected as a <style> tag because ::-webkit-scrollbar can't be set inline.
@@ -4470,6 +4470,26 @@ export default function OWL1() {
     setActiveView(v => (v === "guide" ? "tracks" : v));
   }, [live.enabled, live.connected]);
 
+  // Live source → auto-expand the lane that's waiting on a handoff approval, so the
+  // "✓ APPROVE + CONTINUE" button is in view when a gate opens.
+  useEffect(() => {
+    if (!live.enabled || !live.gates.length) return;
+    const g = live.gates[live.gates.length - 1];
+    setActiveView(v => (v === "guide" ? "tracks" : v));
+    setExpandedLane(owlIdFor(g.agentId));
+  }, [live.enabled, live.gates]);
+
+  // Approve handler: in live mode, send a real OAP gate.approve command to the
+  // backend (resolving the canUseTool gate); otherwise keep the prototype's stub.
+  const handleApprove = useCallback((owlAgentId) => {
+    if (live.enabled) {
+      const g = live.gates.find(gg => owlIdFor(gg.agentId) === owlAgentId) || live.gates[live.gates.length - 1];
+      if (g) postCommand("/command", { type: "gate.approve", gateId: g.gateId });
+    } else {
+      console.log(`Approved: ${owlAgentId}`);
+    }
+  }, [live.enabled, live.gates]);
+
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
       const isCollapsing = prev === id;
@@ -4533,7 +4553,7 @@ export default function OWL1() {
                     {agentsData.map(agent => {
                       const activity = getAgentActivity(agent, clock);
                       return expandedLane === agent.id ? (
-                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => console.log(`Approved: ${agent.id}`)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
+                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
                       ) : (
                         <CollapsedLane key={agent.id} agent={agent} activity={activity} onClick={() => toggleLane(agent.id)} isExpanded={false} pipelineMode={pipelineMode} />
                       );

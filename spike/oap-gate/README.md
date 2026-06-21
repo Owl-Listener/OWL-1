@@ -34,6 +34,24 @@ Interactive (OWL-1 stand-in with a real APPROVE button):
 node spike/oap-gate/server.mjs        # open http://localhost:4317
 ```
 
+## End-to-end demo (the real OWL-1 UI on a live run)
+
+Serve the **built** OWL-1 app and drive it from a full 10-agent Designpowers run:
+
+```bash
+npm run demo                          # vite build + demo-server
+# open http://localhost:4318/?source=live
+```
+
+On connect, the run auto-starts in Human mode. Each handoff opens a gate; OWL-1
+auto-expands the waiting lane, and its `✓ APPROVE + CONTINUE` button posts
+`gate.approve` back to the server (`postCommand`), resolving the `canUseTool` gate
+and dispatching the next agent. The agent-chatter feed shows the real handoff babble.
+
+Verified headlessly: the built app is served at `/`, an SSE connect auto-starts the
+run and blocks at `gate_1`, and `POST /command {gate.approve, gate_1}` resumes the
+pipeline (`gate.closed` → next agent runs → next gate opens).
+
 ## Files
 
 | File | Role |
@@ -44,7 +62,9 @@ node spike/oap-gate/server.mjs        # open http://localhost:4317
 | `gate-controller.mjs` | Bridges the awaited gate promise to the UI's approve command |
 | `mock-designpowers.mjs` | **Swap point.** Scripted 2-agent slice → becomes a real SDK run |
 | `demo.mjs` | Headless proof |
-| `server.mjs` | Interactive HTTP/SSE OWL-1 stand-in |
+| `server.mjs` | Interactive HTTP/SSE OWL-1 stand-in (minimal page) |
+| `demo-server.mjs` | Serves the **built OWL-1 app** + OAP relay (full 10-agent run) |
+| `integration.test.mjs` | Folds a real run through `src/oap` reducer and asserts |
 
 ## The real-backend swap
 

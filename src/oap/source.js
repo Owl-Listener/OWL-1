@@ -23,6 +23,20 @@ export function createSseSource(url) {
   };
 }
 
+// Send an OAP command (UI → server), e.g. { type: 'gate.approve', gateId }.
+export async function postCommand(url, cmd) {
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(cmd),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Replay source: feed a captured array of envelopes on a timer. Lets the UI run a
 // live-shaped demo with no server (useful for offline preview / tests).
 export function createReplaySource(envelopes, intervalMs = 400) {
