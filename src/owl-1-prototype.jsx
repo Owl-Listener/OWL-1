@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
-import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, postCommand } from "./oap/index.js";
+import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, oapIdFor, postCommand } from "./oap/index.js";
 import { sampleProject, eventLogs, conversationData, outputPreviewData, banterMessages, projectConstraints, projectBlockers, projectDeliverables } from "./sampleData.js";
 
 // === CUSTOM SCROLLBAR + PSEUDO-SELECTOR STYLES ===
@@ -1020,7 +1020,7 @@ function CollapsedLane({ agent, onClick, isExpanded, activity, pipelineMode }) {
 
 // === EXPANDED SWIM LANE ===
 // All spacing follows 8pt grid: 8, 16, 24
-function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, onSaveDraft, activeBlocker, onDismissBlocker }) {
+function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, onSaveDraft, activeBlocker, onDismissBlocker, liveMessages }) {
   const [inputVal, setInputVal] = useState("");
   const [draftSaved, setDraftSaved] = useState(false);
   const [approved, setApproved] = useState(false);
@@ -1029,6 +1029,16 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
   const isHITL = pipelineMode === "recording";
   const status = getStatus(activity);
   const pad = 24; // consistent panel padding
+
+  // Live mode: this lane's conversation/output is the agent's real narration, not sample data.
+  const liveActive = !!liveMessages;
+  const liveConversation = liveActive
+    ? liveMessages
+        .filter(m => (m.kind === "narration" || m.kind === "handoff") && owlIdFor(m.from) === agent.id)
+        .map(m => ({ role: "agent", name: agent.name, text: m.text }))
+    : [];
+  const conversation = liveActive ? liveConversation : conversationData;
+  const liveOutput = liveConversation.length ? liveConversation[liveConversation.length - 1].text : null;
 
   // Determine if this agent has the active blocker
   const hasBlocker = activeBlocker && (activeBlocker.agent === agent.name || activeBlocker.agent === agent.id.toUpperCase());
@@ -1224,7 +1234,12 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
       <div style={{ display: "flex", gap: 16, padding: pad }}>
         {/* Left: Conversation */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-          {conversationData.map((msg, i) => (
+          {liveActive && conversation.length === 0 && (
+            <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.muted, lineHeight: 1.5, padding: 16 }}>
+              {agent.name} hasn't spoken yet — their narration will appear here as they work.
+            </div>
+          )}
+          {conversation.map((msg, i) => (
             <div key={i} style={{
               background: tokens.surface.raised,
               boxShadow: tokens.shadow.convex,
@@ -1286,15 +1301,15 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
             flex: 1,
           }}>
             <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: tokens.accent.text, marginBottom: 8, letterSpacing: "0.08em" }}>
-              {">"} ANALYZING_COMPETITIVE_LANDSCAPE
+              {">"} {liveActive ? `${agent.name.toUpperCase()} — LATEST` : "ANALYZING_COMPETITIVE_LANDSCAPE"}
             </div>
             <pre style={{
               fontFamily: tokens.font.mono, fontSize: 11,
-              color: tokens.text.primary,
+              color: liveActive && !liveOutput ? tokens.text.muted : tokens.text.primary,
               lineHeight: 1.6,
               margin: 0, whiteSpace: "pre-wrap",
             }}>
-              {outputPreviewData}
+              {liveActive ? (liveOutput || "Output appears in Deliverables and design-state.md as this agent ships work.") : outputPreviewData}
             </pre>
           </div>
         </div>
@@ -2556,8 +2571,17 @@ function NodesView({ clock, pipelineMode }) {
 
 // === PROJECTS VIEW ===
 // Project list with status indicators, brief, and quick stats.
-function ProjectsView({ clock }) {
-  const projects = [
+function ProjectsView({ clock, live }) {
+  // In live mode, the only project is the current real session.
+  const projects = live
+    ? [{
+        name: live.name,
+        status: live.finished ? "completed" : (live.brief ? "active" : "queued"),
+        progress: Math.round(clock * 100),
+        brief: live.brief || "Awaiting your brief — describe what you want to design.",
+        agents: 10, deliverables: live.deliverables, blockers: live.blockers, updated: "Just now",
+      }]
+    : [
     {
       name: "Fintech Dashboard Redesign", status: "active", progress: Math.round(clock * 100),
       brief: "Redesign the portfolio dashboard for clarity and speed. Reduce cognitive load, improve data density, ensure WCAG AA.",
@@ -2898,31 +2922,52 @@ function MemoryView() {
 
 // === TELEMETRY VIEW ===
 // Performance metrics, token usage, cost tracking, and agent efficiency data.
-function TelemetryView({ clock, pipelineMode }) {
-  // Simulated telemetry data
-  const tokenUsage = agentsData.map(agent => {
-    const activity = getAgentActivity(agent, clock);
-    const baseTokens = Math.round(800 + activity * 4200);
-    return { name: agent.name, input: baseTokens, output: Math.round(baseTokens * 0.6), cost: (baseTokens * 0.000015).toFixed(4) };
-  });
+function TelemetryView({ clock, pipelineMode, live }) {
+  // Token usage: real per-agent totals from the live run, or simulated in the prototype.
+  const tokenUsage = live
+    ? agentsData.map(agent => {
+        const t = live.telemetry.byAgent[oapIdFor(agent.id)] || { input: 0, output: 0, cost: 0 };
+        return { name: agent.name, input: t.input, output: t.output, cost: t.cost.toFixed(4) };
+      })
+    : agentsData.map(agent => {
+        const activity = getAgentActivity(agent, clock);
+        const baseTokens = Math.round(800 + activity * 4200);
+        return { name: agent.name, input: baseTokens, output: Math.round(baseTokens * 0.6), cost: (baseTokens * 0.000015).toFixed(4) };
+      });
 
-  const totalInput = tokenUsage.reduce((s, t) => s + t.input, 0);
-  const totalOutput = tokenUsage.reduce((s, t) => s + t.output, 0);
-  const totalCost = tokenUsage.reduce((s, t) => s + parseFloat(t.cost), 0);
+  const totalInput = live ? live.telemetry.totalInput : tokenUsage.reduce((s, t) => s + t.input, 0);
+  const totalOutput = live ? live.telemetry.totalOutput : tokenUsage.reduce((s, t) => s + t.output, 0);
+  const totalCost = live ? live.telemetry.totalCost : tokenUsage.reduce((s, t) => s + parseFloat(t.cost), 0);
 
-  const latencyData = [
-    { label: "Avg response", value: "340ms", status: "good" },
-    { label: "P95 response", value: "890ms", status: "ok" },
-    { label: "P99 response", value: "2.1s", status: "warn" },
-    { label: "Pipeline cycle", value: "12.4s", status: "good" },
-  ];
+  // Latency/efficiency aren't measured from the live run yet — show honest placeholders
+  // in live mode rather than fabricated numbers.
+  const latencyData = live
+    ? [
+        { label: "Avg response", value: "—", status: "ok" },
+        { label: "P95 response", value: "—", status: "ok" },
+        { label: "P99 response", value: "—", status: "ok" },
+        { label: "Pipeline cycle", value: "—", status: "ok" },
+      ]
+    : [
+        { label: "Avg response", value: "340ms", status: "good" },
+        { label: "P95 response", value: "890ms", status: "ok" },
+        { label: "P99 response", value: "2.1s", status: "warn" },
+        { label: "Pipeline cycle", value: "12.4s", status: "good" },
+      ];
 
-  const efficiencyData = [
-    { label: "Handoff success", value: "94%", status: "good" },
-    { label: "Rework rate", value: "12%", status: "ok" },
-    { label: "Blocker resolution", value: "~8 min avg", status: "good" },
-    { label: "Human interventions", value: "3 this session", status: "ok" },
-  ];
+  const efficiencyData = live
+    ? [
+        { label: "Handoff success", value: "—", status: "ok" },
+        { label: "Rework rate", value: "—", status: "ok" },
+        { label: "Blocker resolution", value: "—", status: "ok" },
+        { label: "Human interventions", value: "—", status: "ok" },
+      ]
+    : [
+        { label: "Handoff success", value: "94%", status: "good" },
+        { label: "Rework rate", value: "12%", status: "ok" },
+        { label: "Blocker resolution", value: "~8 min avg", status: "good" },
+        { label: "Human interventions", value: "3 this session", status: "ok" },
+      ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2947,7 +2992,7 @@ function TelemetryView({ clock, pipelineMode }) {
           { label: "TOTAL TOKENS", value: (totalInput + totalOutput).toLocaleString(), sub: `${totalInput.toLocaleString()} in · ${totalOutput.toLocaleString()} out` },
           { label: "SESSION COST", value: `$${totalCost.toFixed(3)}`, sub: `~$${(totalCost * 60).toFixed(2)}/hr projected` },
           { label: "ACTIVE AGENTS", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "running").length + "/" + agentsData.length, sub: pipelineMode === "stopped" ? "Pipeline stopped" : "Pipeline running" },
-          { label: "UPTIME", value: "47m", sub: "Session duration" },
+          { label: "UPTIME", value: live ? "—" : "47m", sub: "Session duration" },
         ].map(stat => (
           <div key={stat.label} style={{
             flex: 1, background: tokens.surface.raised, boxShadow: tokens.shadow.convex,
@@ -4514,7 +4559,7 @@ export default function OWL1() {
               <>
                 {/* Side nav views within Arrangement tab */}
                 {activeView === "projects" && (
-                  <ProjectsView clock={clock} />
+                  <ProjectsView clock={clock} live={live.enabled ? { name: liveProject?.name || "Live session", brief: liveBrief, deliverables: liveDeliverables?.length || 0, blockers: liveBlockers?.length || 0, finished: live.finished } : null} />
                 )}
 
                 {activeView === "tracks" && !hasProject && (
@@ -4529,7 +4574,7 @@ export default function OWL1() {
                     {agentsData.map(agent => {
                       const activity = getAgentActivity(agent, clock);
                       return expandedLane === agent.id ? (
-                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
+                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} liveMessages={live.enabled ? live.messages : null} />
                       ) : (
                         <CollapsedLane key={agent.id} agent={agent} activity={activity} onClick={() => toggleLane(agent.id)} isExpanded={false} pipelineMode={pipelineMode} />
                       );
@@ -4542,7 +4587,7 @@ export default function OWL1() {
                 )}
 
                 {activeView === "telemetry" && (
-                  <TelemetryView clock={clock} pipelineMode={pipelineMode} />
+                  <TelemetryView clock={clock} pipelineMode={pipelineMode} live={live.enabled ? { telemetry: live.telemetry } : null} />
                 )}
               </>
             )}

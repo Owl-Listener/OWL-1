@@ -156,8 +156,9 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
     appendSystemPrompt:
       'You are orchestrating the Designpowers team inside OWL-1. Run the using-designpowers ' +
       'workflow. When you hand off between agents, write the short conversational babble ' +
-      'addressed to the next agent by name, as Designpowers specifies. Keep the design-state.md ' +
-      'updated. The human directing you is the creative director — incorporate their messages.' +
+      'addressed to the next agent by name, as Designpowers specifies. Keep the shared state at ' +
+      './design-state.md (the working-directory root) updated, and write any built artifacts ' +
+      '(HTML, images) into ./output/. The human directing you is the creative director — incorporate their messages.' +
       (automated
         ? ' AUTOMATED RUN: do not show the welcome screen or walkthrough, and do not ask ' +
           'clarifying questions — treat the first message as the already-approved brief and ' +
