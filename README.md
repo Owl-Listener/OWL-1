@@ -1,12 +1,12 @@
 # OWL-1
 
-A design prototype for orchestrating AI design agents. Built by MC Dean.
+A workstation for directing AI design agents. Built by MC Dean.
 
-OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you can watch ten agents think, intervene when they need you, and stay oriented in a complex creative process.
+OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you direct a real team of ten [Designpowers](https://github.com/Owl-Listener/designpowers) agents — watch them work, intervene when they need you, and stay oriented in a complex creative process that delivers real design work.
 
-## Run real design agents
+## Run it
 
-OWL-1 now drives a **real** team of 10 [Designpowers](https://github.com/Owl-Listener/designpowers) agents (vendored in `vendor/designpowers/`) through the Claude Agent SDK. Describe what you want, watch the team work in real time, approve each handoff, and steer any agent along the way — it produces real design work.
+OWL-1 drives a real team of 10 Designpowers agents (vendored in `vendor/designpowers/`) through the Claude Agent SDK. Describe what you want, watch the team work in real time, approve each handoff, and steer any agent along the way.
 
 ```bash
 npm install
@@ -16,28 +16,32 @@ npm start                    # open http://localhost:4318/?source=live
 
 **→ Full walkthrough: [QUICKSTART.md](QUICKSTART.md)** (prerequisites, how to direct, troubleshooting).
 
-No key / just looking? `npm run demo` runs a scripted mock of the same experience — same lanes, babble, and approval gates, no agents, no cost.
+Want to look around without a key (or any spend)? `npm run demo` runs the same UI on a scripted offline mock — same lanes, babble, and approval gates, no agents, no cost.
 
 ### How it works
 
-OWL-1 (front end) and Designpowers (agents) talk over the **OWL Agent Protocol** ([`docs/owl-agent-protocol.md`](docs/owl-agent-protocol.md)). The backend runs Designpowers headless via the Claude Agent SDK and translates the live run into OAP events the UI renders; OWL-1's **APPROVE** button is the SDK's per-handoff permission gate (`canUseTool`). Internals and the offline spike live in `spike/oap-gate/`.
-
-The sections below describe the original design prototype — still the default when you open the app without `?source=live`.
+OWL-1 (front end) and Designpowers (agents) talk over the **OWL Agent Protocol** ([`docs/owl-agent-protocol.md`](docs/owl-agent-protocol.md)). The backend runs Designpowers headless via the Claude Agent SDK and translates the live run into OAP events the UI renders; OWL-1's **APPROVE** button is the SDK's per-handoff permission gate — a `PreToolUse` hook that pauses each subagent dispatch until you approve. Backend internals live in `spike/oap-gate/`.
 
 ## What's in here
 
 ```
 owl-1/
   src/
-    main.jsx                  # React entry point
-    owl-1-prototype.jsx       # The full prototype (single file)
+    main.jsx                # React entry point
+    owl-1-prototype.jsx     # The full OWL-1 interface (single file)
+    oap/                    # OWL Agent Protocol client — live event source for the UI
+  spike/oap-gate/           # The backend: real Claude Agent SDK runner + server (+ offline mock)
+  vendor/designpowers/      # The 10-agent Designpowers team — agents, skills, vendored in
+  scripts/
+    setup-designpowers.mjs  # Lays out the workspace the SDK loads Designpowers from
   docs/
-    design-brief.md           # Original design brief
-    design-critique.md        # Design critique notes
-    component-spec.md         # Component specification
-  index.html                  # Vite entry (loads Google Fonts)
-  vite.config.js              # Vite config
-  package.json                # React 18 + Vite 5
+    owl-agent-protocol.md   # The OWL Agent Protocol — backend ↔ UI contract
+    design-brief.md         # Original design brief
+    design-critique.md      # Design critique notes
+    component-spec.md       # Component specification
+  QUICKSTART.md             # Designer quickstart
+  index.html                # Vite entry (loads Google Fonts)
+  package.json              # React 18 + Vite 5 + Claude Agent SDK
 ```
 
 ## Running it
@@ -50,11 +54,12 @@ export ANTHROPIC_API_KEY=sk-ant-...
 npm start            # http://localhost:4318/?source=live
 ```
 
-Just the design prototype (simulated, no key):
+Offline preview — the same UI on simulated data, no key, no cost:
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+npm run demo         # scripted mock backend, http://localhost:4318/?source=live
+# or: npm run dev    # the raw UI with built-in sample data, http://localhost:5173
 ```
 
 ## Building
@@ -83,6 +88,6 @@ The left nav gives you Projects, Tracks, Memory (editable taste profile and desi
 
 ## Status
 
-Alpha. Two ways to run: the **real** path (`npm start`) drives live Designpowers agents via the Claude Agent SDK and produces real design work; the **prototype** path (`npm run dev`) is the original simulated design artifact.
+Working alpha. `npm start` drives live Designpowers agents via the Claude Agent SDK and produces real design work — validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the Human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`.
 
-The real path has been validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`. Known limitations: agent-*initiated* questions are skipped for now (the designer steers via the chat instead), and the right-panel blockers/deliverables/telemetry aren't fully wired to live data yet. A working alpha, not a hardened product.
+Still being wired up: agent-*initiated* questions are skipped for now (you steer via the chat instead), and the right-panel blockers, deliverables, and telemetry show sample data rather than live data. Real and usable — not yet hardened.
