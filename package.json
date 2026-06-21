@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "spike:gate": "node spike/oap-gate/demo.mjs",
+    "spike:gate:auto": "node spike/oap-gate/demo.mjs --auto",
+    "spike:server": "node spike/oap-gate/server.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",
