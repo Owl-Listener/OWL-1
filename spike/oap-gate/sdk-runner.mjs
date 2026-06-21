@@ -73,7 +73,7 @@ export class InputQueue {
 //   mode      : 'human' (approve each handoff) | 'auto'
 //   workspace : path to .dp-workspace (cwd the SDK loads Designpowers from)
 //   inputQueue: InputQueue the UI feeds director messages into (mid-run steering)
-export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue, automated = false }) {
+export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0 }) {
   let query;
   try {
     ({ query } = await import('@anthropic-ai/claude-agent-sdk'));
@@ -238,7 +238,16 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
       // A `result` marks the end of the orchestrator's pass. Close the input stream
       // so the run completes (and emits run.finished) instead of hanging open
       // forever waiting for more director messages.
-      if (msg.type === 'result') inputQueue.close();
+      if (msg.type === 'result') {
+        // The Claude SDK reports cost only at the end of a turn, so the cap can't
+        // pre-empt a run here — it's a post-hoc warning. (Gemini, where we own the
+        // loop, enforces the cap live before each dispatch.)
+        const cost = msg.total_cost_usd ?? msg.cost ?? 0;
+        if (cap > 0 && cost >= cap) {
+          session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `⚠ This run cost $${cost.toFixed(2)}, over your $${cap.toFixed(2)} cap. Cost is reported at the end on Claude, so the cap is a warning here.` });
+        }
+        inputQueue.close();
+      }
     }
   } catch (err) {
     session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `Run error: ${err?.message || err}` });

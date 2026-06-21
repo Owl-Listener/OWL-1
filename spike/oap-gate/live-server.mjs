@@ -47,7 +47,7 @@ function broadcast(env) {
   for (const res of clients) res.write(line);
 }
 
-function startRun(brief, mode = 'human') {
+function startRun(brief, mode = 'human', cap = 0) {
   if (running) return;
   running = true;
   const gen = ++runGen;
@@ -61,7 +61,8 @@ function startRun(brief, mode = 'human') {
   });
   // OWL-1 is the onboarding UI, so always skip Designpowers' text welcome and
   // blocking questions; `mode` still controls the per-handoff approval gate.
-  runDesign({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true });
+  // `cap` is the spend ceiling in USD (0 = none) — the run stops when reached.
+  runDesign({ session, gates, brief, mode, workspace: WORKSPACE, inputQueue, automated: true, cap: Number(cap) || 0 });
 }
 
 // New Project: drop the current run so the next brief starts a fresh one.
@@ -106,7 +107,7 @@ async function createAgent(a) {
 async function handleCommand(cmd) {
   switch (cmd?.type) {
     case 'run.start':
-      if (cmd.brief?.trim()) startRun(cmd.brief.trim(), cmd.mode || 'human');
+      if (cmd.brief?.trim()) startRun(cmd.brief.trim(), cmd.mode || 'human', cmd.cap);
       return true;
     case 'run.reset':
       resetRun();

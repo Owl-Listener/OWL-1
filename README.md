@@ -105,6 +105,12 @@ Three transport modes: Auto (agents run freely), Human (you approve each step), 
 
 The left nav gives you Projects, Tracks, Memory (editable taste profile and design context), and Telemetry (token usage, cost, latency). Guide lives at the bottom.
 
+## Contributing
+
+OWL-1 is provider-agnostic by design — the UI speaks the [OWL Agent Protocol](docs/owl-agent-protocol.md), and a backend (a model or a whole agent swarm) is a swappable adapter. Adding one is the highest-leverage contribution, and there's an honest roadmap of where help is most wanted (verification, the spend cap, finishing the live surfaces, hardening).
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** — start with the protocol doc, then the "Adding a new backend" guide.
+
 ## Status
 
 Working alpha. `npm start` drives live Designpowers agents via the Claude Agent SDK and produces real design work — validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the Human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`.

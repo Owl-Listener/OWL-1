@@ -4452,6 +4452,54 @@ function StatusBar() {
   );
 }
 
+// Rough pre-run cost estimate. Agent runs are non-deterministic, so this is an honest
+// band (from real data points), not a precise number — the cap is the real guarantee.
+function estimateRun(brief) {
+  const b = (brief || "").toLowerCase();
+  let low = 1, high = 5;
+  if (/\b(quick|poc|lean|simple|small|prototype|component|button)\b/.test(b)) { low = 0.5; high = 2; }
+  if (/\b(full|complete|production|comprehensive|polished|app|platform|system|end-to-end|dashboard)\b/.test(b)) { low = 3; high = 12; }
+  return { low, high };
+}
+
+// Pre-run confirmation: shows the estimate and makes the user set/OK a spend cap
+// before any real (paid) run starts. The run is stopped if it reaches the cap.
+function RunConfirmModal({ pending, onCancel, onStart }) {
+  const est = estimateRun(pending?.brief);
+  const [cap, setCap] = useState(5);
+  useEffect(() => { if (pending) setCap(Math.max(2, Math.ceil(est.high))); }, [pending]);
+  if (!pending) return null;
+  const field = { boxSizing: "border-box", border: "none", outline: "none", background: tokens.surface.inset, boxShadow: tokens.shadow.concave, borderRadius: tokens.radius.inset, padding: "10px 12px", fontFamily: tokens.font.mono, fontSize: 14, color: tokens.text.primary, width: 120 };
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 480, maxWidth: "90vw", background: tokens.surface.raised, boxShadow: tokens.shadow.convex, borderRadius: tokens.radius.panel, padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ fontFamily: tokens.font.mono, fontSize: 11, color: tokens.text.secondary, letterSpacing: "0.08em" }}>START RUN — {pending.mode === "auto" ? "AUTO" : "HUMAN"} MODE</div>
+        <div style={{ fontFamily: tokens.font.sans, fontSize: 12, color: tokens.text.secondary, lineHeight: 1.5, background: tokens.surface.inset, boxShadow: tokens.shadow.concave, borderRadius: tokens.radius.inset, padding: 12 }}>
+          {pending.brief}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: tokens.text.muted, letterSpacing: "0.06em" }}>ESTIMATED COST</div>
+            <div style={{ fontFamily: tokens.font.mono, fontSize: 18, color: tokens.text.primary, marginTop: 2 }}>~${est.low.toFixed(2)}–${est.high.toFixed(2)}</div>
+            <div style={{ fontFamily: tokens.font.sans, fontSize: 10, color: tokens.text.muted, marginTop: 2 }}>rough — real agents, depends how deep the team goes</div>
+          </div>
+          <div>
+            <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: tokens.text.muted, letterSpacing: "0.06em" }}>SPEND CAP ($)</div>
+            <input type="number" min="1" step="1" style={{ ...field, marginTop: 4 }} value={cap} onChange={e => setCap(Math.max(0, Number(e.target.value) || 0))} />
+          </div>
+        </div>
+        <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.secondary, lineHeight: 1.4 }}>
+          The run stops if it reaches <strong>${Number(cap).toFixed(2)}</strong>. Live cost shows in Telemetry.
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Button variant="secondary" onClick={onCancel}>CANCEL</Button>
+          <Button variant="primary" onClick={() => onStart(Number(cap) || 0)}>START RUN</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // === MAIN APP ===
 export default function OWL1() {
   const [expandedLane, setExpandedLane] = useState("lead");
@@ -4534,17 +4582,23 @@ export default function OWL1() {
   const liveRunStartedRef = useRef(false);
   const [liveBrief, setLiveBrief] = useState("");
   useEffect(() => { if (!live.enabled) { liveRunStartedRef.current = false; setLiveBrief(""); } }, [live.enabled]);
+  // The first message opens the run-confirmation modal (estimate + spend cap) before
+  // any paid run starts; later messages steer the running team.
+  const [pendingRun, setPendingRun] = useState(null);
   const handleDirectorMessage = useCallback((text) => {
-    if (!liveRunStartedRef.current) {
-      liveRunStartedRef.current = true;
-      setLiveBrief(text);
-      // The run honours the transport mode: AUTO (playing) runs hands-free,
-      // anything else pauses at each handoff for your approval.
-      postCommand("/command", { type: "run.start", brief: text, mode: pipelineMode === "playing" ? "auto" : "human" });
-    } else {
+    if (liveRunStartedRef.current) {
       postCommand("/command", { type: "agent.ask", text });
+    } else if (!pendingRun) {
+      setPendingRun({ brief: text, mode: pipelineMode === "playing" ? "auto" : "human" });
     }
-  }, [pipelineMode]);
+  }, [pipelineMode, pendingRun]);
+  const startPendingRun = useCallback((cap) => {
+    if (!pendingRun) return;
+    liveRunStartedRef.current = true;
+    setLiveBrief(pendingRun.brief);
+    postCommand("/command", { type: "run.start", brief: pendingRun.brief, mode: pendingRun.mode, cap });
+    setPendingRun(null);
+  }, [pendingRun]);
 
   // Map live OAP data into the shapes the panels render. In live mode the UI shows
   // the real run (or honest empty states) instead of the sample fintech project.
@@ -4718,6 +4772,7 @@ export default function OWL1() {
 
       <StatusBar />
       <SettingsDrawer isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} toggleTheme={toggleTheme} />
+      <RunConfirmModal pending={pendingRun} onCancel={() => setPendingRun(null)} onStart={startPendingRun} />
     </div>
   );
 }
