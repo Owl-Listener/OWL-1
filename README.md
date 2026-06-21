@@ -1,10 +1,15 @@
 # OWL-1
 
-A workstation for directing AI design agents. Built by MC Dean.
+An **experimental** prototype exploring how directing a team of AI design agents could feel. Built by MC Dean.
+
+> ⚠️ **Experimental personal project.** This is a research prototype / design exploration —
+> not a product, not a service, and not affiliated with, endorsed by, or representing any
+> employer. It's provided as-is, with no support or warranty. It explores ideas about
+> human-in-the-loop agent orchestration; it is not a commercial or competitive offering.
 
 ![OWL-1 directing the Designpowers team — the Design Strategist track paused for your approval](docs/images/owl-1-arrangement.png)
 
-OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you direct a real team of ten [Designpowers](https://github.com/Owl-Listener/designpowers) agents — watch them work, intervene when they need you, and stay oriented in a complex creative process that delivers real design work.
+OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you direct a team of ten [Designpowers](https://github.com/Owl-Listener/designpowers) agents — watch them work, intervene when they need you, and stay oriented in a complex creative process. It's an experiment in *how agent orchestration should feel*, not a finished tool.
 
 ## Run it
 
@@ -116,6 +121,6 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** — start with the protocol doc, then
 
 ## Status
 
-Working alpha. `npm start` drives live Designpowers agents via the Claude Agent SDK and produces real design work — validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the Human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`.
+**Experimental alpha — a prototype, not a product.** `npm start` runs live Designpowers agents via the Claude Agent SDK: agents dispatch (the SDK's `Agent` tool), the lanes light up, the Human-mode APPROVE button holds and resumes a handoff (via a `PreToolUse` hook), output streams back as babble, and the team writes into `.dp-workspace/design-state.md`. Much of this is build-verified but only lightly observed in real runs — treat it as a research artifact you can run, not something to rely on.
 
-Still being wired up: agent-*initiated* questions are skipped for now (you steer via the chat instead), and the right-panel blockers, deliverables, and telemetry show sample data rather than live data. Real and usable — not yet hardened.
+It exists to explore *how human-in-the-loop agent orchestration could feel*. Rough edges, partial features (some panels still show sample data), no support or warranty.
