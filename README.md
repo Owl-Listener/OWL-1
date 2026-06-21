@@ -4,7 +4,25 @@ A design prototype for orchestrating AI design agents. Built by MC Dean.
 
 OWL-1 borrows from the language of digital audio workstations: your design agents are tracks, the pipeline is a transport, and the whole system runs on a shared clock. The result is a UI where you can watch ten agents think, intervene when they need you, and stay oriented in a complex creative process.
 
-This is a prototype. It runs on simulated data, not live agents. The interaction design, visual language, sound design, and information architecture are all here. The backend integration is not.
+## Run real design agents
+
+OWL-1 now drives a **real** team of 10 [Designpowers](https://github.com/Owl-Listener/designpowers) agents (vendored in `vendor/designpowers/`) through the Claude Agent SDK. Describe what you want, watch the team work in real time, approve each handoff, and steer any agent along the way — it produces real design work.
+
+```bash
+npm install
+export ANTHROPIC_API_KEY=sk-ant-...
+npm start                    # open http://localhost:4318/?source=live
+```
+
+**→ Full walkthrough: [QUICKSTART.md](QUICKSTART.md)** (prerequisites, how to direct, troubleshooting).
+
+No key / just looking? `npm run demo` runs a scripted mock of the same experience — same lanes, babble, and approval gates, no agents, no cost.
+
+### How it works
+
+OWL-1 (front end) and Designpowers (agents) talk over the **OWL Agent Protocol** ([`docs/owl-agent-protocol.md`](docs/owl-agent-protocol.md)). The backend runs Designpowers headless via the Claude Agent SDK and translates the live run into OAP events the UI renders; OWL-1's **APPROVE** button is the SDK's per-handoff permission gate (`canUseTool`). Internals and the offline spike live in `spike/oap-gate/`.
+
+The sections below describe the original design prototype — still the default when you open the app without `?source=live`.
 
 ## What's in here
 
@@ -24,12 +42,20 @@ owl-1/
 
 ## Running it
 
+Real agents (see [QUICKSTART.md](QUICKSTART.md)):
+
 ```bash
 npm install
-npm run dev
+export ANTHROPIC_API_KEY=sk-ant-...
+npm start            # http://localhost:4318/?source=live
 ```
 
-Open `http://localhost:5173`.
+Just the design prototype (simulated, no key):
+
+```bash
+npm install
+npm run dev          # http://localhost:5173
+```
 
 ## Building
 
@@ -57,4 +83,6 @@ The left nav gives you Projects, Tracks, Memory (editable taste profile and desi
 
 ## Status
 
-Alpha prototype. Simulated data. No backend. This is a design artifact that communicates how agent orchestration should feel, not a production application. Yet.
+Alpha. Two ways to run: the **real** path (`npm start`) drives live Designpowers agents via the Claude Agent SDK and produces real design work; the **prototype** path (`npm run dev`) is the original simulated design artifact.
+
+The real path has been validated against live runs: agents dispatch (the SDK's `Agent` tool), the OWL-1 lanes light up, the human-mode APPROVE button holds and resumes a real handoff (via a `PreToolUse` hook), subagent output streams back as babble (via `SubagentStop`), and the team writes real work into `.dp-workspace/design-state.md`. Known limitations: agent-*initiated* questions are skipped for now (the designer steers via the chat instead), and the right-panel blockers/deliverables/telemetry aren't fully wired to live data yet. A working alpha, not a hardened product.

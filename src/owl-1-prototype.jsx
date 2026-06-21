@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, postCommand } from "./oap/index.js";
 
 // === CUSTOM SCROLLBAR + PSEUDO-SELECTOR STYLES ===
 // Injected as a <style> tag because ::-webkit-scrollbar can't be set inline.
@@ -242,6 +243,18 @@ function getStatus(activity) {
   return "idle";
 }
 
+// Live-aware activity. When an OAP source is connected (liveRuntime.active), an
+// agent's activity comes from real swarm events; otherwise it falls back to the
+// original sine-curve simulation. This is the single seam that lets every view
+// run on Designpowers' live event stream instead of fake data.
+function getAgentActivity(agent, clock) {
+  if (liveRuntime.active) {
+    const live = liveRuntime.agents[agent.id];
+    return live ? live.activity : 0;
+  }
+  return getActivity(agent.phase, agent.duration, clock);
+}
+
 const eventLogs = [
   { time: "12:44:02", text: "DISCOVERY agent initialized", highlight: false },
   { time: "12:44:05", text: "Design brief loaded — 4 constraints", highlight: false },
@@ -330,14 +343,18 @@ const projectDeliverables = [
 ];
 
 // === PROJECT HEADER ===
-function ProjectHeader({ clock }) {
+function ProjectHeader({ clock, liveMessages, onDirectorSend }) {
   const [banterIdx, setBanterIdx] = useState(0);
   const [visibleBanter, setVisibleBanter] = useState(banterMessages.slice(0, 4));
   const [projectInput, setProjectInput] = useState("");
-  const [projectMessages, setProjectMessages] = useState([
-    { role: "user", text: "Focus on reducing cognitive load on the overview screen. Data density is key but it needs to breathe." },
-    { role: "lead", text: "Understood. I'll brief DISCOVERY to prioritize dashboard patterns and TASTE to explore calm, spacious aesthetics. STRATEGY will map the information hierarchy." },
-  ]);
+  const [projectMessages, setProjectMessages] = useState(
+    onDirectorSend
+      ? [{ role: "lead", text: "Describe what you want to design, and I'll brief the team. You can steer any agent at any time." }]
+      : [
+          { role: "user", text: "Focus on reducing cognitive load on the overview screen. Data density is key but it needs to breathe." },
+          { role: "lead", text: "Understood. I'll brief DISCOVERY to prioritize dashboard patterns and TASTE to explore calm, spacious aesthetics. STRATEGY will map the information hierarchy." },
+        ]
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -357,12 +374,35 @@ function ProjectHeader({ clock }) {
   const currentStageIdx = pipelineStages.findIndex(s => clock < s.pct);
   const overallProgress = Math.round(clock * 100);
 
+  // When live OAP messages are present, the chatter feed shows the real handoff
+  // babble + narration from the swarm instead of the simulated rotation.
+  const prettyAgent = (id) => {
+    if (!id) return "—";
+    const owlId = OWL_ID_BY_OAP[id] || id;
+    const a = agentsData.find(x => x.id === owlId);
+    return a ? a.name : id;
+  };
+  const banterToShow = (liveMessages && liveMessages.length)
+    ? liveMessages
+        .filter(m => m.kind === "handoff" || m.kind === "narration")
+        .slice(-5)
+        .map(m => ({ from: prettyAgent(m.from), to: prettyAgent(m.to), text: m.text }))
+    : visibleBanter;
+
   const handleSend = () => {
     if (!projectInput.trim()) return;
-    setProjectMessages(prev => [...prev,
-      { role: "user", text: projectInput },
-      { role: "lead", text: "Got it. Relaying to the team now..." },
-    ]);
+    if (onDirectorSend) {
+      // Live mode: send the message to the real backend. The first message starts
+      // the run (it's the brief); later messages steer the team. Replies arrive in
+      // the live chatter feed and the agent lanes, not as a canned line here.
+      onDirectorSend(projectInput.trim());
+      setProjectMessages(prev => [...prev, { role: "user", text: projectInput }]);
+    } else {
+      setProjectMessages(prev => [...prev,
+        { role: "user", text: projectInput },
+        { role: "lead", text: "Got it. Relaying to the team now..." },
+      ]);
+    }
     setProjectInput("");
   };
 
@@ -557,9 +597,9 @@ function ProjectHeader({ clock }) {
             overflowY: "auto",
             display: "flex", flexDirection: "column", gap: 8,
           }}>
-            {visibleBanter.map((msg, i) => (
+            {banterToShow.map((msg, i) => (
               <div key={i} style={{
-                opacity: i === 0 && visibleBanter.length >= 5 ? 0.4 : 1,
+                opacity: i === 0 && banterToShow.length >= 5 ? 0.4 : 1,
                 transition: "opacity 0.5s ease",
               }}>
                 <div style={{ display: "flex", gap: 4, alignItems: "baseline", marginBottom: 2 }}>
@@ -1970,9 +2010,9 @@ function AgentsPanel({ clock, pipelineMode, onSelectAgent }) {
         }}>
           {/* Summary stats */}
           {[
-            { label: "ACTIVE", value: agentsData.filter(a => getStatus(getActivity(a.phase, a.duration, clock)) === "running").length, color: tokens.accent.main },
-            { label: "ONLINE", value: agentsData.filter(a => getStatus(getActivity(a.phase, a.duration, clock)) === "online").length, color: tokens.led.staged },
-            { label: "IDLE", value: agentsData.filter(a => getStatus(getActivity(a.phase, a.duration, clock)) === "idle").length, color: tokens.text.muted },
+            { label: "ACTIVE", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "running").length, color: tokens.accent.main },
+            { label: "ONLINE", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "online").length, color: tokens.led.staged },
+            { label: "IDLE", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "idle").length, color: tokens.text.muted },
           ].map(s => (
             <div key={s.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
               <span style={{ fontFamily: tokens.font.mono, fontSize: 24, fontWeight: 600, color: s.color }}>{s.value}</span>
@@ -1984,7 +2024,7 @@ function AgentsPanel({ clock, pipelineMode, onSelectAgent }) {
         {/* Agent list */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {agentsData.map(agent => {
-            const activity = getActivity(agent.phase, agent.duration, clock);
+            const activity = getAgentActivity(agent, clock);
             const status = getStatus(activity);
             const isWaiting = pipelineMode === "recording" && status === "running";
             return (
@@ -2146,7 +2186,7 @@ function AgentConsoleView({ clock, pipelineMode }) {
 
       {/* Agent cards */}
       {agentsData.map(agent => {
-        const activity = getActivity(agent.phase, agent.duration, clock);
+        const activity = getAgentActivity(agent, clock);
         const status = getStatus(activity);
         const isActive = status === "running";
         const isExpanded = expandedAgent === agent.id;
@@ -2469,7 +2509,7 @@ function NodesView({ clock, pipelineMode }) {
             const toPos = nodePositions[edge.to];
             if (!fromPos || !toPos) return null;
             const fromAgent = agentsData.find(a => a.id === edge.from);
-            const fromActivity = getActivity(fromAgent.phase, fromAgent.duration, clock);
+            const fromActivity = getAgentActivity(fromAgent, clock);
             const isActive = fromActivity > 0.1 && isRunning;
             const isHovered = hoveredNode === edge.from || hoveredNode === edge.to;
             const path = bezierPath(fromPos, toPos);
@@ -2498,7 +2538,7 @@ function NodesView({ clock, pipelineMode }) {
           {agentsData.map((agent, idx) => {
             const pos = nodePositions[agent.id];
             if (!pos) return null;
-            const activity = getActivity(agent.phase, agent.duration, clock);
+            const activity = getAgentActivity(agent, clock);
             const status = getStatus(activity);
             const isActive = status === "running" && isRunning;
             const isOnline = status === "online";
@@ -2936,7 +2976,7 @@ function MemoryView() {
 function TelemetryView({ clock, pipelineMode }) {
   // Simulated telemetry data
   const tokenUsage = agentsData.map(agent => {
-    const activity = getActivity(agent.phase, agent.duration, clock);
+    const activity = getAgentActivity(agent, clock);
     const baseTokens = Math.round(800 + activity * 4200);
     return { name: agent.name, input: baseTokens, output: Math.round(baseTokens * 0.6), cost: (baseTokens * 0.000015).toFixed(4) };
   });
@@ -2981,7 +3021,7 @@ function TelemetryView({ clock, pipelineMode }) {
         {[
           { label: "TOTAL TOKENS", value: (totalInput + totalOutput).toLocaleString(), sub: `${totalInput.toLocaleString()} in · ${totalOutput.toLocaleString()} out` },
           { label: "SESSION COST", value: `$${totalCost.toFixed(3)}`, sub: `~$${(totalCost * 60).toFixed(2)}/hr projected` },
-          { label: "ACTIVE AGENTS", value: agentsData.filter(a => getStatus(getActivity(a.phase, a.duration, clock)) === "running").length + "/" + agentsData.length, sub: pipelineMode === "stopped" ? "Pipeline stopped" : "Pipeline running" },
+          { label: "ACTIVE AGENTS", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "running").length + "/" + agentsData.length, sub: pipelineMode === "stopped" ? "Pipeline stopped" : "Pipeline running" },
           { label: "UPTIME", value: "47m", sub: "Session duration" },
         ].map(stat => (
           <div key={stat.label} style={{
@@ -4398,19 +4438,82 @@ export default function OWL1() {
   const [activeBlocker, setActiveBlocker] = useState(null); // blocker context when navigating from "Needs Your Attention"
   const [theme, setTheme] = useState("light"); // "light" | "dark"
 
+  // === LIVE OAP SOURCE ===
+  // Add ?source=live to the URL to drive the UI from a real agent swarm's event
+  // stream (e.g. spike/oap-gate/server.mjs or the Designpowers backend) instead of
+  // the built-in simulation. Default (no param) = the original prototype, untouched.
+  const liveEnabled = typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("source") === "live";
+  const live = useOapRuntime({ enabled: liveEnabled, url: "/events" });
+
   // Update the module-level tokens whenever theme changes
   tokens = buildTokens(theme);
   const toggleTheme = useCallback(() => setTheme(t => t === "light" ? "dark" : "light"), []);
 
-  // Global pipeline clock — only runs when playing or recording
+  // Global pipeline clock — only runs when playing or recording.
+  // A live source drives the clock from real stage events instead (see below).
   useEffect(() => {
+    if (live.enabled) return;
     if (pipelineMode === "stopped") return;
     const speed = pipelineMode === "recording" ? 0.001 : 0.002; // recording runs at half speed — agents wait for you
     const interval = setInterval(() => {
       setClock(prev => (prev + speed) % 1);
     }, 50);
     return () => clearInterval(interval);
-  }, [pipelineMode]);
+  }, [pipelineMode, live.enabled]);
+
+  // Live source → transport mode.
+  useEffect(() => {
+    if (!live.enabled) return;
+    setPipelineMode(live.pipelineMode);
+  }, [live.enabled, live.pipelineMode]);
+
+  // Live source → clock derived from the active pipeline stage.
+  useEffect(() => {
+    if (!live.enabled) return;
+    const pct = pipelineStages.find(s => s.id === live.stage)?.pct;
+    setClock(typeof pct === "number" ? Math.max(0, pct - 0.01) : 0);
+  }, [live.enabled, live.stage]);
+
+  // Live source → leave the guide and show the running tracks once connected.
+  useEffect(() => {
+    if (!live.enabled || !live.connected) return;
+    setHasProject(true);
+    setActiveView(v => (v === "guide" ? "tracks" : v));
+  }, [live.enabled, live.connected]);
+
+  // Live source → auto-expand the lane that's waiting on a handoff approval, so the
+  // "✓ APPROVE + CONTINUE" button is in view when a gate opens.
+  useEffect(() => {
+    if (!live.enabled || !live.gates.length) return;
+    const g = live.gates[live.gates.length - 1];
+    setActiveView(v => (v === "guide" ? "tracks" : v));
+    setExpandedLane(owlIdFor(g.agentId));
+  }, [live.enabled, live.gates]);
+
+  // Approve handler: in live mode, send a real OAP gate.approve command to the
+  // backend (resolving the canUseTool gate); otherwise keep the prototype's stub.
+  const handleApprove = useCallback((owlAgentId) => {
+    if (live.enabled) {
+      const g = live.gates.find(gg => owlIdFor(gg.agentId) === owlAgentId) || live.gates[live.gates.length - 1];
+      if (g) postCommand("/command", { type: "gate.approve", gateId: g.gateId });
+    } else {
+      console.log(`Approved: ${owlAgentId}`);
+    }
+  }, [live.enabled, live.gates]);
+
+  // Director console: the designer's first message is the brief that starts the run;
+  // later messages steer the team mid-flight ("leave feedback along the way").
+  const liveRunStartedRef = useRef(false);
+  useEffect(() => { if (!live.enabled) liveRunStartedRef.current = false; }, [live.enabled]);
+  const handleDirectorMessage = useCallback((text) => {
+    if (!liveRunStartedRef.current) {
+      liveRunStartedRef.current = true;
+      postCommand("/command", { type: "run.start", brief: text, mode: "human" });
+    } else {
+      postCommand("/command", { type: "agent.ask", text });
+    }
+  }, []);
 
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
@@ -4453,7 +4556,7 @@ export default function OWL1() {
             )}
 
             {/* Project header — visible when a project is loaded and not in guide */}
-            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} />}
+            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} liveMessages={live.enabled ? live.messages : null} onDirectorSend={live.enabled ? handleDirectorMessage : null} />}
 
             {/* === TAB CONTENT: ARRANGEMENT === */}
             {activeTab === "ARRANGEMENT" && activeView !== "guide" && (
@@ -4473,9 +4576,9 @@ export default function OWL1() {
                 {activeView === "tracks" && hasProject && (
                   <>
                     {agentsData.map(agent => {
-                      const activity = getActivity(agent.phase, agent.duration, clock);
+                      const activity = getAgentActivity(agent, clock);
                       return expandedLane === agent.id ? (
-                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => console.log(`Approved: ${agent.id}`)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
+                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
                       ) : (
                         <CollapsedLane key={agent.id} agent={agent} activity={activity} onClick={() => toggleLane(agent.id)} isExpanded={false} pipelineMode={pipelineMode} />
                       );

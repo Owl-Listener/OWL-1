@@ -1,0 +1,29 @@
+name: Check routing contract
+
+# Regression net for routing: verifies every fixture in tests/routing-fixtures.md
+# still targets a real, wired skill. Fails if a router change drops or orphans a
+# skill that a routing scenario depends on. Runs on PRs and pushes that touch the
+# router, the skills, the fixtures, or the check itself.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "skills/**"
+      - "tests/routing-fixtures.md"
+      - "scripts/check-routing.sh"
+      - ".github/workflows/check-routing.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "skills/**"
+      - "tests/routing-fixtures.md"
+      - "scripts/check-routing.sh"
+
+jobs:
+  routing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run routing-contract check
+        run: bash scripts/check-routing.sh
