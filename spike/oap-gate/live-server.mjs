@@ -28,6 +28,9 @@ const ARTIFACTS = join(WORKSPACE, 'output');
 const AGENTS_DIR = join(WORKSPACE, '.claude', 'agents'); // what the SDK loads
 const VENDOR_AGENTS = join(ROOT, 'vendor', 'designpowers', 'agents'); // persists in the pack
 const CUSTOM_JSON = join(WORKSPACE, 'custom-agents.json'); // roster registry for the UI
+// The director's memory/taste record. OBSERVATIONAL ONLY — a report you can read across
+// sessions, never fed into a run to steer the agents (a core Designpowers principle).
+const MEMORY_FILE = join(WORKSPACE, 'memory.json');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -170,6 +173,25 @@ const server = createServer(async (req, res) => {
     let reg = [];
     try { reg = JSON.parse(await readFile(CUSTOM_JSON, 'utf8')); } catch {}
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(reg));
+    return;
+  }
+
+  if (url.pathname === '/memory') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body || '{}');
+          await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2)); // saved as a report only
+          res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+        } catch { res.writeHead(400, { 'content-type': 'application/json' }).end('{"ok":false}'); }
+      });
+      return;
+    }
+    let data = {};
+    try { data = JSON.parse(await readFile(MEMORY_FILE, 'utf8')); } catch {}
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(data));
     return;
   }
 

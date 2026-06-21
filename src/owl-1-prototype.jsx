@@ -2745,7 +2745,7 @@ function ProjectsView({ clock, live, onNewProject }) {
 
 // === MEMORY VIEW ===
 // Shows stored taste profiles, design principles, and learned preferences.
-function MemoryView() {
+function MemoryView({ live }) {
   const [editingSection, setEditingSection] = useState(null);
   const [memoryData, setMemoryData] = useState({
     taste: {
@@ -2827,6 +2827,36 @@ function MemoryView() {
       return updated;
     });
   };
+
+  // Persist the memory record so it survives across sessions. This is OBSERVATIONAL
+  // ONLY — a report you can read; it is never fed into a run to steer the agents.
+  // Live mode saves to the backend; otherwise to localStorage.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        let saved = null;
+        if (live) { const r = await fetch("/memory"); saved = await r.json(); }
+        else { const s = localStorage.getItem("owl1-memory"); saved = s ? JSON.parse(s) : null; }
+        if (saved && !cancelled) {
+          setMemoryData(prev => {
+            const next = { ...prev };
+            for (const k of Object.keys(next)) if (Array.isArray(saved[k])) next[k] = { ...next[k], entries: saved[k] };
+            return next;
+          });
+        }
+      } catch {}
+      hydrated.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [live]);
+  useEffect(() => {
+    if (!hydrated.current) return;
+    const compact = Object.fromEntries(Object.entries(memoryData).map(([k, v]) => [k, v.entries]));
+    if (live) fetch("/memory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(compact) }).catch(() => {});
+    else { try { localStorage.setItem("owl1-memory", JSON.stringify(compact)); } catch {} }
+  }, [memoryData, live]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -4732,7 +4762,7 @@ export default function OWL1() {
                 )}
 
                 {activeView === "memory" && (
-                  <MemoryView />
+                  <MemoryView live={live.enabled} />
                 )}
 
                 {activeView === "telemetry" && (

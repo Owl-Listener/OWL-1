@@ -67,7 +67,7 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
     session.emitEvent('agent.status', { id, name: prettyName(id), stage: STAGE_BY_AGENT[id], status: AgentStatus.IDLE, confidence: 'inferred' });
   }
 
-  let totalIn = 0, totalOut = 0, capped = false;
+  let totalIn = 0, totalOut = 0, capped = false, askSeq = 0;
   const cumCost = () => totalIn * rate.in + totalOut * rate.out;
   const addUsage = (u, agentId) => {
     if (!u) return;
@@ -94,6 +94,7 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
   const fileTools = [{ functionDeclarations: [
     { name: 'write_file', description: 'Write/overwrite a project file (e.g. design-state.md, output/component.html).', parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] } },
     { name: 'read_file', description: 'Read a project file. Returns contents or NOT_FOUND.', parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] } },
+    { name: 'ask_director', description: 'Ask the human director a question — ONLY when you need a decision only they can make (e.g. brand colours, an unresolved trade-off). Returns their answer. Do not use for routine work.', parameters: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] } },
   ] }];
   async function execFileTool(call, agentId) {
     const a = call.args || {};
@@ -111,6 +112,19 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
     if (call.name === 'read_file') {
       try { return { content: await readFile(safePath(a.path), 'utf8') }; } catch { return { content: 'NOT_FOUND' }; }
     }
+    if (call.name === 'ask_director') {
+      const q = (a.question || 'I need your input.').trim();
+      const bid = `blk_ask_${++askSeq}`;
+      // Surface the question to the UI (the "needs your input" blocker) and wait for the
+      // director's next chat message as the answer.
+      session.emitEvent('blocker.raised', { id: bid, agent: agentId, severity: 'input', text: q, cta: 'RESPOND', stage: STAGE_BY_AGENT[agentId] });
+      session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `❓ ${prettyName(agentId)} asks: ${q}` });
+      const next = await inputQueue.next();
+      session.emitEvent('blocker.cleared', { id: bid });
+      const answer = next?.done ? '(no answer provided — proceed with your best judgement)' : next.value;
+      if (!next?.done) session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `You → ${prettyName(agentId)}: ${answer}` });
+      return { answer };
+    }
     return { error: 'unknown tool' };
   }
 
@@ -122,7 +136,7 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
   async function runSubagent(agentId, taskBrief) {
     let sys = '';
     try { sys = await readFile(join(agentsDir, `${agentId}.md`), 'utf8'); } catch { sys = `You are ${prettyName(agentId)}, a design specialist.`; }
-    sys += '\n\n--- Runtime ---\nYou run inside OWL-1. Use read_file to load design-state.md for context, do your part, then use write_file to save your output and update design-state.md (artifacts go under output/). Finish with a 1–2 sentence handoff note. Do not ask questions.';
+    sys += '\n\n--- Runtime ---\nYou run inside OWL-1. Use read_file to load design-state.md for context, do your part, then use write_file to save your output and update design-state.md (artifacts go under output/). If you genuinely need a decision only the director can make (e.g. brand colours, an unresolved trade-off), call ask_director and use the answer — otherwise proceed without asking. Finish with a 1–2 sentence handoff note.';
     session.emitEvent('stage.changed', { id: STAGE_BY_AGENT[agentId], active: true });
     session.emitEvent('agent.status', { id: agentId, status: AgentStatus.RUNNING, activity: 0.9, confidence: 'inferred' });
 
