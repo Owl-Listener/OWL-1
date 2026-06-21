@@ -3995,7 +3995,7 @@ function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgen
 // DAW-inspired three-position slider: STOPPED → AUTO → HUMAN-IN-THE-LOOP
 // A physical knob travels along a pill-shaped track. Each position has distinct
 // visual identity. Clicking a zone snaps the knob; the whole bar communicates mode.
-function ModeSwitcher({ pipelineMode, setPipelineMode }) {
+function ModeSwitcher({ pipelineMode, setPipelineMode, onStop }) {
   // Stroke-based SVG icons — consistent with our icon system
   const StopIcon = ({ color }) => (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -4078,7 +4078,7 @@ function ModeSwitcher({ pipelineMode, setPipelineMode }) {
               setPipelineMode(mode.id);
               if (mode.id === "playing") SoundEngine.play();
               else if (mode.id === "recording") SoundEngine.record();
-              else SoundEngine.stop();
+              else { SoundEngine.stop(); onStop && onStop(); }
             }}
             style={{
               width: zoneWidth, height: "100%",
@@ -4148,7 +4148,7 @@ function ModeSwitcher({ pipelineMode, setPipelineMode }) {
   );
 }
 
-function TopBar({ activeTab, setActiveTab, pipelineMode, setPipelineMode, onSettingsClick }) {
+function TopBar({ activeTab, setActiveTab, pipelineMode, setPipelineMode, onSettingsClick, onStop }) {
   const tabs = ["ARRANGEMENT", "AGENTS", "NODES"];
 
   return (
@@ -4192,7 +4192,7 @@ function TopBar({ activeTab, setActiveTab, pipelineMode, setPipelineMode, onSett
 
       <div style={{ flex: 1 }} />
 
-      <ModeSwitcher pipelineMode={pipelineMode} setPipelineMode={setPipelineMode} />
+      <ModeSwitcher pipelineMode={pipelineMode} setPipelineMode={setPipelineMode} onStop={onStop} />
 
       <button className="neo-nav" onClick={onSettingsClick} style={{
         width: 36, height: 36,
@@ -4651,6 +4651,15 @@ export default function OWL1() {
     if (!live.enabled) { setPipelineMode("stopped"); setClock(0); }
   }, [live.enabled]);
 
+  // Recover: transport STOP cancels the in-flight run (abort the model work). After
+  // cancelling, the next brief opens a fresh run-confirmation again.
+  const handleStop = useCallback(() => {
+    if (live.enabled && liveRunStartedRef.current) {
+      postCommand("/command", { type: "run.cancel" });
+      liveRunStartedRef.current = false;
+    }
+  }, [live.enabled]);
+
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
       const isCollapsing = prev === id;
@@ -4669,7 +4678,7 @@ export default function OWL1() {
       overflow: "hidden",
     }}>
       <style dangerouslySetInnerHTML={{ __html: buildCSS(tokens) }} />
-      <TopBar activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (activeView === "guide") setActiveView("tracks"); }} pipelineMode={pipelineMode} setPipelineMode={setPipelineMode} onSettingsClick={() => setSettingsOpen(true)} />
+      <TopBar activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (activeView === "guide") setActiveView("tracks"); }} pipelineMode={pipelineMode} setPipelineMode={setPipelineMode} onSettingsClick={() => setSettingsOpen(true)} onStop={handleStop} />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <SideNav activeView={activeView} setActiveView={(view) => { setActiveView(view); setActiveTab("ARRANGEMENT"); }} />

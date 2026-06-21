@@ -42,7 +42,8 @@ function fail(session, text) {
   session.emitEvent('run.finished', { summary: 'Could not start Gemini run.' });
 }
 
-export async function runDesignpowersGemini({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0 }) {
+export async function runDesignpowersGemini({ session, gates, brief, mode, workspace, inputQueue, automated = false, cap = 0, signal = null }) {
+  const aborted = () => !!signal?.aborted;
   let GoogleGenAI;
   try {
     ({ GoogleGenAI } = await import('@google/genai'));
@@ -128,7 +129,8 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
     const contents = [{ role: 'user', parts: [{ text: taskBrief }] }];
     let finalText = '';
     for (let step = 0; step < 8; step++) {
-      const res = await ai.models.generateContent({ model: MODEL, contents, config: { systemInstruction: sys, tools: fileTools } });
+      if (aborted()) break;
+      const res = await ai.models.generateContent({ model: MODEL, contents, config: { systemInstruction: sys, tools: fileTools, abortSignal: signal } });
       addUsage(res.usageMetadata, agentId);
       const parts = partsOf(res);
       const calls = callsOf(parts);
@@ -158,8 +160,9 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
   const contents = [{ role: 'user', parts: [{ text: brief }] }];
   try {
     for (let turn = 0; turn < 14; turn++) {
+      if (aborted()) break;
       if (overCap()) { flagCap(); break; }
-      const res = await ai.models.generateContent({ model: MODEL, contents, config: { systemInstruction: orchSys, tools: dispatchTool } });
+      const res = await ai.models.generateContent({ model: MODEL, contents, config: { systemInstruction: orchSys, tools: dispatchTool, abortSignal: signal } });
       addUsage(res.usageMetadata, 'design-lead');
       const parts = partsOf(res);
       const calls = callsOf(parts);
@@ -206,9 +209,9 @@ export async function runDesignpowersGemini({ session, gates, brief, mode, works
       contents.push({ role: 'user', parts: responses });
     }
   } catch (err) {
-    session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `Run error: ${err?.message || err}` });
+    if (!aborted()) session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `Run error: ${err?.message || err}` });
   } finally {
     if (inputQueue) inputQueue.close();
-    session.emitEvent('run.finished', { summary: `Designpowers (Gemini) run complete — ~$${(totalIn * rate.in + totalOut * rate.out).toFixed(2)}.` });
+    session.emitEvent('run.finished', { summary: `Designpowers (Gemini) run ${aborted() ? 'cancelled' : 'complete'} — ~$${(totalIn * rate.in + totalOut * rate.out).toFixed(2)}.` });
   }
 }

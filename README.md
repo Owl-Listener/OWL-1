@@ -43,18 +43,21 @@ owl-1/
     main.jsx                # React entry point
     owl-1-prototype.jsx     # The full OWL-1 interface (single file)
     oap/                    # OWL Agent Protocol client — live event source for the UI
-  spike/oap-gate/           # The backend: real Claude Agent SDK runner + server (+ offline mock)
+  spike/oap-gate/           # The backends: sdk-runner (Claude) + gemini-runner (Gemini) + server (+ offline mock)
   vendor/designpowers/      # The 10-agent Designpowers team — agents, skills, vendored in
   scripts/
-    setup-designpowers.mjs  # Lays out the workspace the SDK loads Designpowers from
+    setup-designpowers.mjs  # Lays out the workspace a runner loads Designpowers from
+  test/                     # Test suite (node:test) — run with `npm test`
   docs/
     owl-agent-protocol.md   # The OWL Agent Protocol — backend ↔ UI contract
     design-brief.md         # Original design brief
     design-critique.md      # Design critique notes
     component-spec.md       # Component specification
+  CONTRIBUTING.md           # How to contribute (start here for the architecture)
   QUICKSTART.md             # Designer quickstart
+  .github/workflows/ci.yml  # CI: build + test on every PR
   index.html                # Vite entry (loads Google Fonts)
-  package.json              # React 18 + Vite 5 + Claude Agent SDK
+  package.json              # React 18 + Vite 5 + Claude Agent SDK + Gemini SDK
 ```
 
 ## Running it

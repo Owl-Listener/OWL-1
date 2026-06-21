@@ -66,14 +66,18 @@ pipeline (`gate.closed` → next agent runs → next gate opens).
 | `demo-server.mjs` | Serves the **built OWL-1 app** + OAP relay (full 10-agent run) |
 | `integration.test.mjs` | Folds a real run through `src/oap` reducer and asserts |
 
-## The real-backend swap
+## This was a spike — the real backends now exist
 
-`mock-designpowers.mjs`'s `dispatchAgent` is the only thing that's fake. To go live:
+The files above (`demo.mjs`, `runner.mjs`, `policies.mjs`, `mock-designpowers.mjs`) are the
+**offline mock proof** — no model, no key, used by `npm run demo` and the tests. The real
+backends were built alongside them and live in the same directory:
 
-1. Replace `dispatchAgent` with a Claude Agent SDK `query()` that runs the Designpowers
-   subagent for `agentId`, feeding `onNarrate`/`onArtifact`/`onBabble` from the SDK
-   message stream and `design-state.md` writes.
-2. Pass the SDK's real `canUseTool` option straight through to `makeHumanCanUseTool`'s
-   decision — the gate logic is unchanged.
-3. Point OWL-1's frontend at the same event stream the `server.mjs` SSE endpoint emits
-   (next milestone: frontend decoupling).
+| File | Backend |
+|------|---------|
+| `sdk-runner.mjs` | **Claude** — Designpowers via the Claude Agent SDK. The handoff gate is a **`PreToolUse` hook** (not `canUseTool`, which the Claude Code runtime never calls — verified empirically). |
+| `gemini-runner.mjs` | **Gemini** — OWL-1 owns the function-calling loop and pauses before each dispatch. |
+| `live-server.mjs` | Serves the built app + relays OAP; selects the runner via `OWL_BACKEND`; handles `run.start`/`run.cancel`/`agent.create`. |
+
+Run the real thing with `npm start` (Claude) or `OWL_BACKEND=gemini npm start` — see the
+top-level [QUICKSTART.md](../../QUICKSTART.md). Both real runners reuse the exact gate
+plumbing this spike proved (`GateController`, the `gate.opened`/`gate.approve` OAP events).
