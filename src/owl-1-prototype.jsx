@@ -343,14 +343,18 @@ const projectDeliverables = [
 ];
 
 // === PROJECT HEADER ===
-function ProjectHeader({ clock, liveMessages }) {
+function ProjectHeader({ clock, liveMessages, onDirectorSend }) {
   const [banterIdx, setBanterIdx] = useState(0);
   const [visibleBanter, setVisibleBanter] = useState(banterMessages.slice(0, 4));
   const [projectInput, setProjectInput] = useState("");
-  const [projectMessages, setProjectMessages] = useState([
-    { role: "user", text: "Focus on reducing cognitive load on the overview screen. Data density is key but it needs to breathe." },
-    { role: "lead", text: "Understood. I'll brief DISCOVERY to prioritize dashboard patterns and TASTE to explore calm, spacious aesthetics. STRATEGY will map the information hierarchy." },
-  ]);
+  const [projectMessages, setProjectMessages] = useState(
+    onDirectorSend
+      ? [{ role: "lead", text: "Describe what you want to design, and I'll brief the team. You can steer any agent at any time." }]
+      : [
+          { role: "user", text: "Focus on reducing cognitive load on the overview screen. Data density is key but it needs to breathe." },
+          { role: "lead", text: "Understood. I'll brief DISCOVERY to prioritize dashboard patterns and TASTE to explore calm, spacious aesthetics. STRATEGY will map the information hierarchy." },
+        ]
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -387,10 +391,18 @@ function ProjectHeader({ clock, liveMessages }) {
 
   const handleSend = () => {
     if (!projectInput.trim()) return;
-    setProjectMessages(prev => [...prev,
-      { role: "user", text: projectInput },
-      { role: "lead", text: "Got it. Relaying to the team now..." },
-    ]);
+    if (onDirectorSend) {
+      // Live mode: send the message to the real backend. The first message starts
+      // the run (it's the brief); later messages steer the team. Replies arrive in
+      // the live chatter feed and the agent lanes, not as a canned line here.
+      onDirectorSend(projectInput.trim());
+      setProjectMessages(prev => [...prev, { role: "user", text: projectInput }]);
+    } else {
+      setProjectMessages(prev => [...prev,
+        { role: "user", text: projectInput },
+        { role: "lead", text: "Got it. Relaying to the team now..." },
+      ]);
+    }
     setProjectInput("");
   };
 
@@ -4490,6 +4502,19 @@ export default function OWL1() {
     }
   }, [live.enabled, live.gates]);
 
+  // Director console: the designer's first message is the brief that starts the run;
+  // later messages steer the team mid-flight ("leave feedback along the way").
+  const liveRunStartedRef = useRef(false);
+  useEffect(() => { if (!live.enabled) liveRunStartedRef.current = false; }, [live.enabled]);
+  const handleDirectorMessage = useCallback((text) => {
+    if (!liveRunStartedRef.current) {
+      liveRunStartedRef.current = true;
+      postCommand("/command", { type: "run.start", brief: text, mode: "human" });
+    } else {
+      postCommand("/command", { type: "agent.ask", text });
+    }
+  }, []);
+
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
       const isCollapsing = prev === id;
@@ -4531,7 +4556,7 @@ export default function OWL1() {
             )}
 
             {/* Project header — visible when a project is loaded and not in guide */}
-            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} liveMessages={live.enabled ? live.messages : null} />}
+            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} liveMessages={live.enabled ? live.messages : null} onDirectorSend={live.enabled ? handleDirectorMessage : null} />}
 
             {/* === TAB CONTENT: ARRANGEMENT === */}
             {activeTab === "ARRANGEMENT" && activeView !== "guide" && (

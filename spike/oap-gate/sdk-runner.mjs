@@ -1,0 +1,225 @@
+// THE REAL BACKEND. Runs Designpowers for real via the Claude Agent SDK and
+// translates the live run into the OAP event stream OWL-1 already consumes.
+//
+// This replaces mock-designpowers.dispatchAgent. Nothing in the protocol, the OAP
+// reducer, the SSE relay, or the OWL-1 UI changes — only the source of the events.
+//
+// Requires: ANTHROPIC_API_KEY in the environment, and `npm install` (which pulls
+// @anthropic-ai/claude-agent-sdk). The SDK is imported dynamically so this module
+// loads fine without it (the mock demo still runs offline).
+//
+// Docs: https://code.claude.com/docs/en/agent-sdk/overview
+
+import { AgentStatus, nextMessageId } from './oap.mjs';
+
+// Designpowers agent id -> OWL-1 pipeline stage (for stage.changed events).
+const STAGE_BY_AGENT = {
+  'design-scout': 'discover',
+  'design-strategist': 'strategy',
+  'inspiration-scout': 'taste',
+  'content-writer': 'design',
+  'design-lead': 'design',
+  'motion-designer': 'design',
+  'design-builder': 'design',
+  'design-critic': 'verify',
+  'accessibility-reviewer': 'verify',
+  'heuristic-evaluator': 'verify',
+};
+
+const prettyName = (id) =>
+  String(id || '')
+    .split('-')
+    .map((w) => w[0]?.toUpperCase() + w.slice(1))
+    .join(' ');
+
+// A tiny async queue: the UI pushes director messages, the SDK prompt generator pulls.
+export class InputQueue {
+  constructor() {
+    this._items = [];
+    this._waiters = [];
+    this._closed = false;
+  }
+  push(item) {
+    if (this._closed) return;
+    const w = this._waiters.shift();
+    if (w) w({ value: item, done: false });
+    else this._items.push(item);
+  }
+  close() {
+    this._closed = true;
+    while (this._waiters.length) this._waiters.shift()({ value: undefined, done: true });
+  }
+  next() {
+    if (this._items.length) return Promise.resolve({ value: this._items.shift(), done: false });
+    if (this._closed) return Promise.resolve({ value: undefined, done: true });
+    return new Promise((resolve) => this._waiters.push(resolve));
+  }
+  [Symbol.asyncIterator]() {
+    return this;
+  }
+}
+
+// Run a real Designpowers session.
+//   session   : OapSession (event sink)
+//   gates     : GateController (handoff approval, in human mode)
+//   brief     : the designer's initial brief (string)
+//   mode      : 'human' (approve each handoff) | 'auto'
+//   workspace : path to .dp-workspace (cwd the SDK loads Designpowers from)
+//   inputQueue: InputQueue the UI feeds director messages into (mid-run steering)
+export async function runDesignpowers({ session, gates, brief, mode, workspace, inputQueue }) {
+  let query;
+  try {
+    ({ query } = await import('@anthropic-ai/claude-agent-sdk'));
+  } catch {
+    session.emitEvent('message', {
+      id: nextMessageId(),
+      kind: 'system',
+      text: 'The Claude Agent SDK is not installed. Run `npm install`, then try again.',
+    });
+    session.emitEvent('run.finished', { summary: 'SDK not installed.' });
+    return;
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    session.emitEvent('message', {
+      id: nextMessageId(),
+      kind: 'system',
+      text: 'No ANTHROPIC_API_KEY set. Add your key and restart: ANTHROPIC_API_KEY=sk-... npm start',
+    });
+    session.emitEvent('run.finished', { summary: 'No API key.' });
+    return;
+  }
+
+  session.emitEvent('run.started', {
+    mode,
+    lane: 'build',
+    projectId: 'designpowers-run',
+    capabilities: { stream: true, artifacts: true, pauseMidRun: true, steer: true, telemetry: true },
+  });
+
+  // The prompt is a streaming async iterable: first the brief, then whatever the
+  // designer types mid-run (the "leave feedback along the way" path).
+  async function* prompt() {
+    yield { type: 'user', message: { role: 'user', content: brief } };
+    for await (const text of inputQueue) {
+      session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `You → team: ${text}` });
+      yield { type: 'user', message: { role: 'user', content: text } };
+    }
+  }
+
+  let currentAgent = null;
+  const announce = (id) => {
+    if (!session.agentsSeen?.has(id)) {
+      (session.agentsSeen ||= new Set()).add(id);
+      session.emitEvent('agent.status', { id, name: prettyName(id), stage: STAGE_BY_AGENT[id], status: AgentStatus.IDLE, confidence: 'inferred' });
+    }
+  };
+
+  // canUseTool: allow everything EXCEPT subagent dispatch in human mode, which we
+  // gate. Returning a Promise holds the agentic loop until OWL-1 approves — this is
+  // Designpowers' Direct mode, expressed through OWL-1's APPROVE button.
+  const canUseTool = async (tool, input) => {
+    const isDispatch = tool === 'Task' || tool === 'Agent';
+    if (!isDispatch || mode !== 'human') {
+      if (isDispatch) announceDispatch(input);
+      return { behavior: 'allow', updatedInput: input };
+    }
+    const agentId = input.subagent_type || 'agent';
+    announce(agentId);
+    const { id, decision } = gates.request({ tool, input });
+    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.AWAITING, waiting: 'AWAITING INPUT', confidence: 'inferred' });
+    session.emitEvent('gate.opened', { gateId: id, agentId, kind: 'handoff', stage: STAGE_BY_AGENT[agentId], context: `Dispatch ${prettyName(agentId)}?` });
+    const d = await decision;
+    session.emitEvent('gate.closed', { gateId: id, agentId, resolution: d.action });
+    if (d.action === 'approve') {
+      announceDispatch(input);
+      return { behavior: 'allow', updatedInput: input };
+    }
+    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.SKIPPED, confidence: 'inferred' });
+    return { behavior: 'deny', message: d.note || `Skipped ${prettyName(agentId)} by director.` };
+  };
+
+  function announceDispatch(input) {
+    const agentId = input.subagent_type || 'agent';
+    announce(agentId);
+    currentAgent = agentId;
+    session.emitEvent('stage.changed', { id: STAGE_BY_AGENT[agentId], active: true });
+    session.emitEvent('agent.status', { id: agentId, status: AgentStatus.RUNNING, activity: 0.9, confidence: 'inferred' });
+  }
+
+  const options = {
+    cwd: workspace,
+    settingSources: ['project'], // loads .claude/agents, .claude/skills, CLAUDE.md
+    permissionMode: 'default', // so canUseTool is the decider
+    canUseTool,
+    appendSystemPrompt:
+      'You are orchestrating the Designpowers team inside OWL-1. Run the using-designpowers ' +
+      'workflow. When you hand off between agents, write the short conversational babble ' +
+      'addressed to the next agent by name, as Designpowers specifies. Keep the design-state.md ' +
+      'updated. The human directing you is the creative director — incorporate their messages.',
+    hooks: {
+      SubagentStop: [
+        {
+          hooks: [
+            async (hookInput) => {
+              const id = hookInput?.subagent_type || hookInput?.agent_id || currentAgent;
+              if (id) session.emitEvent('agent.status', { id, status: AgentStatus.DONE, activity: 0, confidence: 'inferred' });
+              return {};
+            },
+          ],
+        },
+      ],
+      PostToolUse: [
+        {
+          matcher: 'Write|Edit',
+          hooks: [
+            async (hookInput) => {
+              const fp = hookInput?.tool_input?.file_path || '';
+              if (/design-state\.md$/.test(fp)) {
+                session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: 'design-state.md updated', stage: STAGE_BY_AGENT[currentAgent] });
+              } else if (fp) {
+                const name = fp.split('/').pop();
+                session.emitEvent('artifact.created', { id: `art_${name}`, name, status: 'staged', agent: currentAgent, url: `/artifacts/${name}` });
+              }
+              return {};
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  try {
+    for await (const msg of query({ prompt: prompt(), options })) {
+      translate(msg, session, () => currentAgent);
+    }
+  } catch (err) {
+    session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `Run error: ${err?.message || err}` });
+  } finally {
+    inputQueue.close();
+    session.emitEvent('run.finished', { summary: 'Designpowers run complete.' });
+  }
+}
+
+// Map one SDK message to OAP events. Defensive about field shapes — the exact
+// SDK message schema is the thing to confirm on first real run.
+function translate(msg, session, getCurrent) {
+  if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'assistant' && msg.message?.content) {
+    for (const block of msg.message.content) {
+      if (block.type === 'text' && block.text?.trim()) {
+        session.emitEvent('message', { id: nextMessageId(), kind: 'narration', from: getCurrent(), to: null, text: block.text.trim() });
+      }
+    }
+  }
+
+  if (msg.type === 'result') {
+    const u = msg.usage || {};
+    session.emitEvent('telemetry.tick', {
+      agentId: getCurrent(),
+      inputTokens: u.input_tokens ?? 0,
+      outputTokens: u.output_tokens ?? 0,
+      costUsd: msg.total_cost_usd ?? msg.cost ?? 0,
+    });
+  }
+}

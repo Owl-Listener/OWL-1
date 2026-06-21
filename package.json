@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "setup": "node scripts/setup-designpowers.mjs",
+    "start": "npm run setup && vite build && node spike/oap-gate/live-server.mjs",
     "spike:gate": "node spike/oap-gate/demo.mjs",
     "spike:gate:auto": "node spike/oap-gate/demo.mjs --auto",
     "spike:server": "node spike/oap-gate/server.mjs",
@@ -15,6 +17,7 @@
     "demo": "vite build && node spike/oap-gate/demo-server.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.185",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
