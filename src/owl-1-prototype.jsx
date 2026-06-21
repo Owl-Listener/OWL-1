@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
-import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, postCommand } from "./oap/index.js";
+import { useOapRuntime, liveRuntime, OWL_ID_BY_OAP, owlIdFor, oapIdFor, postCommand } from "./oap/index.js";
+import { sampleProject, eventLogs, conversationData, outputPreviewData, banterMessages, projectConstraints, projectBlockers, projectDeliverables } from "./sampleData.js";
 
 // === CUSTOM SCROLLBAR + PSEUDO-SELECTOR STYLES ===
 // Injected as a <style> tag because ::-webkit-scrollbar can't be set inline.
@@ -255,54 +256,6 @@ function getAgentActivity(agent, clock) {
   return getActivity(agent.phase, agent.duration, clock);
 }
 
-const eventLogs = [
-  { time: "12:44:02", text: "DISCOVERY agent initialized", highlight: false },
-  { time: "12:44:05", text: "Design brief loaded — 4 constraints", highlight: false },
-  { time: "12:44:10", text: "Competitive scan: 7 products queued", highlight: true },
-  { time: "12:44:15", text: "TASTE agent online — loading taste profile", highlight: false },
-  { time: "12:44:20", text: "Handing findings to STRATEGY...", highlight: false },
-  { time: "12:44:25", text: "Pattern extraction in progress", highlight: false },
-  { time: "12:44:30", text: "Component inventory: 44 patterns found", highlight: true },
-];
-
-const conversationData = [
-  { role: "user", text: "Analyze the competitive landscape for a fintech dashboard. Focus on data density and navigation patterns." },
-  { role: "agent", name: "AGENT-DISCOVERY", text: "SCANNING 7 COMPETITOR PRODUCTS. EXTRACTING COMPONENT PATTERNS, INFORMATION DENSITY METRICS, AND ACCESSIBILITY APPROACHES. MAPPING DESIGN DEPENDENCIES." },
-];
-
-const outputPreviewData = `> ANALYZING_COMPETITIVE_LANDSCAPE
-{
-  "pattern_classifications": [
-    "sidebar_hybrid",
-    "grid_dense",
-    "contextual_nav"
-  ],
-  "component_inventory": {
-    "charts": 12,
-    "tables": 8,
-    "widgets": 24,
-    "nav_patterns": 5
-  },
-  "density_score": 0.78,
-  "a11y_baseline": "AA"
-}`;
-
-// === AGENT BANTER DATA ===
-const banterMessages = [
-  { from: "Design Scout", to: "Design Strategist", text: "Found 3 recurring patterns across competitors — sidebar nav, contextual filtering, progressive disclosure. Handing over." },
-  { from: "Design Strategist", to: "Design Scout", text: "Good. Can you dig deeper on the progressive disclosure? I need specifics on trigger mechanisms." },
-  { from: "Inspiration Scout", to: "Design Lead", text: "The moodboard is leaning warm and tactile. Think soft shadows, generous whitespace, muted earth tones with a single accent." },
-  { from: "Design Lead", to: "Inspiration Scout", text: "Love that direction. Make sure it doesn't drift too editorial — this needs to feel productive, not just beautiful." },
-  { from: "Design Scout", to: "Accessibility Reviewer", text: "Heads up — 4 of 7 competitors fail WCAG AA on their data tables. Flagging as an opportunity." },
-  { from: "Design Critic", to: "Design Builder", text: "The card component spec is missing hover and focus states. Don't start building until those are defined." },
-  { from: "Content Writer", to: "Design Lead", text: "Draft microcopy ready for the empty states. Three options per screen — want to review before I hand to Design Builder?" },
-  { from: "Motion Designer", to: "Design Critic", text: "Proposed 200ms ease-out for panel transitions. Accessible, performant, and matches the calm aesthetic." },
-  { from: "Accessibility Reviewer", to: "Design Lead", text: "All color pairs pass AA. Two pairs are borderline for AAA — flagging for your call." },
-  { from: "Design Builder", to: "Motion Designer", text: "Component scaffold is ready. Waiting on your animation tokens before I wire up transitions." },
-  { from: "Heuristic Evaluator", to: "Design Strategist", text: "Cognitive walkthrough complete. Two flows have unnecessary steps — recommending we cut the confirmation modal on save." },
-  { from: "Design Lead", to: "ALL", text: "Good progress everyone. Scout and Strategist are converging. Taste profile is locked. Moving to active design phase." },
-];
-
 // === PIPELINE STAGES ===
 const pipelineStages = [
   { id: "discover", label: "DISCOVER", pct: 0.15 },
@@ -314,36 +267,8 @@ const pipelineStages = [
   { id: "retro", label: "RETRO", pct: 1.0 },
 ];
 
-// === PROJECT DATA ===
-const projectConstraints = [
-  { label: "Platform", value: "Web (responsive)" },
-  { label: "A11y", value: "WCAG AA" },
-  { label: "Deadline", value: "Apr 12, 2026" },
-  { label: "Framework", value: "React + Tailwind" },
-];
-
-const projectBlockers = [
-  { agent: "Design Critic", severity: "warn", text: "Card component missing hover and focus states" },
-  { agent: "Inspiration Scout", severity: "input", text: "Needs your input: warm or cool neutral palette?" },
-];
-
-const projectDeliverables = [
-  { name: "Competitive audit", status: "approved", agent: "Design Scout",
-    preview: "7 competitors analyzed across data density, navigation patterns, and accessibility.\n\nKey findings:\n• Robinhood uses progressive disclosure to manage complexity\n• Wise leads in information density without cognitive overload\n• Only 2/7 competitors meet WCAG AA contrast on charts\n\nFull report: 24 pages, 44 annotated screenshots." },
-  { name: "Design principles", status: "approved", agent: "Design Strategist",
-    preview: "1. Clarity over density — every data point earns its place\n2. Progressive confidence — reveal complexity as users demonstrate mastery\n3. Accessible by default — AA compliance is the floor, not the ceiling\n4. Speed is respect — sub-200ms interactions, no loading spinners\n5. Calm authority — the interface whispers competence, never shouts" },
-  { name: "Taste profile", status: "approved", agent: "Inspiration Scout",
-    preview: "Emotional target: Calm authority with warm precision\nReferences: Linear (density), Stripe (clarity), Wise (approachability)\nPalette: Warm neutrals, single accent (coral-orange), restrained use of color\nType: Monospace for data, humanist sans for narrative\nElevation: Neomorphic with purpose — depth signals interactivity" },
-  { name: "Information architecture", status: "draft", agent: "Design Strategist",
-    preview: "DRAFT — awaiting review\n\nL1: Dashboard (overview) → Portfolio → Activity → Settings\nL2: Portfolio breaks into Holdings, Performance, Allocation\nL3: Each holding → Detail, History, Documents\n\nOpen question: should Alerts live at L1 or as a persistent overlay?" },
-  { name: "Component inventory", status: "in-progress", agent: "Design Builder",
-    preview: "IN PROGRESS — 44 patterns identified, 28 specced\n\nCompleted: Card, DataTable, MiniChart, StatBlock, NavRail, TopBar, Badge, Avatar, Tooltip\nIn progress: PortfolioRow, AllocationRing, ActivityFeed\nQueued: AlertBanner, EmptyState, OnboardingFlow, FilterBar, DatePicker" },
-  { name: "Microcopy — empty states", status: "draft", agent: "Content Writer",
-    preview: "DRAFT — 6 empty states written\n\nPortfolio (no holdings): \"Your portfolio is ready. Add your first holding to start tracking.\"\nActivity (no transactions): \"No activity yet. Transactions will appear here as they happen.\"\nSearch (no results): \"Nothing matched. Try a different term or check your filters.\"\n\nTone: Direct, calm, never patronizing." },
-];
-
 // === PROJECT HEADER ===
-function ProjectHeader({ clock, liveMessages, onDirectorSend }) {
+function ProjectHeader({ clock, liveMessages, onDirectorSend, liveProject }) {
   const [banterIdx, setBanterIdx] = useState(0);
   const [visibleBanter, setVisibleBanter] = useState(banterMessages.slice(0, 4));
   const [projectInput, setProjectInput] = useState("");
@@ -431,7 +356,7 @@ function ProjectHeader({ clock, liveMessages, onDirectorSend }) {
                 PROJECT
               </div>
               <div style={{ fontFamily: tokens.font.sans, fontSize: 14, fontWeight: 600, color: tokens.text.primary, lineHeight: 1.3 }}>
-                Fintech Dashboard Redesign
+                {liveProject ? liveProject.name : sampleProject.name}
               </div>
             </div>
             <div style={{
@@ -449,14 +374,14 @@ function ProjectHeader({ clock, liveMessages, onDirectorSend }) {
             fontFamily: tokens.font.sans, fontSize: 11,
             color: tokens.text.secondary, lineHeight: 1.5,
           }}>
-            Redesign the portfolio dashboard for clarity and speed. Reduce cognitive load, improve data density, ensure WCAG AA.
+            {liveProject ? (liveProject.brief || "Awaiting your brief — describe what you want to design above.") : sampleProject.brief}
           </div>
 
           {/* Constraints */}
           <div style={{
             display: "flex", flexWrap: "wrap", gap: 4,
           }}>
-            {projectConstraints.map(c => (
+            {(liveProject ? [] : projectConstraints).map(c => (
               <div key={c.label} style={{
                 fontFamily: tokens.font.mono, fontSize: 9,
                 color: tokens.text.secondary,
@@ -1095,7 +1020,7 @@ function CollapsedLane({ agent, onClick, isExpanded, activity, pipelineMode }) {
 
 // === EXPANDED SWIM LANE ===
 // All spacing follows 8pt grid: 8, 16, 24
-function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, onSaveDraft, activeBlocker, onDismissBlocker }) {
+function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, onSaveDraft, activeBlocker, onDismissBlocker, liveMessages }) {
   const [inputVal, setInputVal] = useState("");
   const [draftSaved, setDraftSaved] = useState(false);
   const [approved, setApproved] = useState(false);
@@ -1104,6 +1029,16 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
   const isHITL = pipelineMode === "recording";
   const status = getStatus(activity);
   const pad = 24; // consistent panel padding
+
+  // Live mode: this lane's conversation/output is the agent's real narration, not sample data.
+  const liveActive = !!liveMessages;
+  const liveConversation = liveActive
+    ? liveMessages
+        .filter(m => (m.kind === "narration" || m.kind === "handoff") && owlIdFor(m.from) === agent.id)
+        .map(m => ({ role: "agent", name: agent.name, text: m.text }))
+    : [];
+  const conversation = liveActive ? liveConversation : conversationData;
+  const liveOutput = liveConversation.length ? liveConversation[liveConversation.length - 1].text : null;
 
   // Determine if this agent has the active blocker
   const hasBlocker = activeBlocker && (activeBlocker.agent === agent.name || activeBlocker.agent === agent.id.toUpperCase());
@@ -1299,7 +1234,12 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
       <div style={{ display: "flex", gap: 16, padding: pad }}>
         {/* Left: Conversation */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-          {conversationData.map((msg, i) => (
+          {liveActive && conversation.length === 0 && (
+            <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.muted, lineHeight: 1.5, padding: 16 }}>
+              {agent.name} hasn't spoken yet — their narration will appear here as they work.
+            </div>
+          )}
+          {conversation.map((msg, i) => (
             <div key={i} style={{
               background: tokens.surface.raised,
               boxShadow: tokens.shadow.convex,
@@ -1361,15 +1301,15 @@ function ExpandedLane({ agent, onCollapse, activity, pipelineMode, onApprove, on
             flex: 1,
           }}>
             <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: tokens.accent.text, marginBottom: 8, letterSpacing: "0.08em" }}>
-              {">"} ANALYZING_COMPETITIVE_LANDSCAPE
+              {">"} {liveActive ? `${agent.name.toUpperCase()} — LATEST` : "ANALYZING_COMPETITIVE_LANDSCAPE"}
             </div>
             <pre style={{
               fontFamily: tokens.font.mono, fontSize: 11,
-              color: tokens.text.primary,
+              color: liveActive && !liveOutput ? tokens.text.muted : tokens.text.primary,
               lineHeight: 1.6,
               margin: 0, whiteSpace: "pre-wrap",
             }}>
-              {outputPreviewData}
+              {liveActive ? (liveOutput || "Output appears in Deliverables and design-state.md as this agent ships work.") : outputPreviewData}
             </pre>
           </div>
         </div>
@@ -2631,8 +2571,17 @@ function NodesView({ clock, pipelineMode }) {
 
 // === PROJECTS VIEW ===
 // Project list with status indicators, brief, and quick stats.
-function ProjectsView({ clock }) {
-  const projects = [
+function ProjectsView({ clock, live }) {
+  // In live mode, the only project is the current real session.
+  const projects = live
+    ? [{
+        name: live.name,
+        status: live.finished ? "completed" : (live.brief ? "active" : "queued"),
+        progress: Math.round(clock * 100),
+        brief: live.brief || "Awaiting your brief — describe what you want to design.",
+        agents: 10, deliverables: live.deliverables, blockers: live.blockers, updated: "Just now",
+      }]
+    : [
     {
       name: "Fintech Dashboard Redesign", status: "active", progress: Math.round(clock * 100),
       brief: "Redesign the portfolio dashboard for clarity and speed. Reduce cognitive load, improve data density, ensure WCAG AA.",
@@ -2973,31 +2922,52 @@ function MemoryView() {
 
 // === TELEMETRY VIEW ===
 // Performance metrics, token usage, cost tracking, and agent efficiency data.
-function TelemetryView({ clock, pipelineMode }) {
-  // Simulated telemetry data
-  const tokenUsage = agentsData.map(agent => {
-    const activity = getAgentActivity(agent, clock);
-    const baseTokens = Math.round(800 + activity * 4200);
-    return { name: agent.name, input: baseTokens, output: Math.round(baseTokens * 0.6), cost: (baseTokens * 0.000015).toFixed(4) };
-  });
+function TelemetryView({ clock, pipelineMode, live }) {
+  // Token usage: real per-agent totals from the live run, or simulated in the prototype.
+  const tokenUsage = live
+    ? agentsData.map(agent => {
+        const t = live.telemetry.byAgent[oapIdFor(agent.id)] || { input: 0, output: 0, cost: 0 };
+        return { name: agent.name, input: t.input, output: t.output, cost: t.cost.toFixed(4) };
+      })
+    : agentsData.map(agent => {
+        const activity = getAgentActivity(agent, clock);
+        const baseTokens = Math.round(800 + activity * 4200);
+        return { name: agent.name, input: baseTokens, output: Math.round(baseTokens * 0.6), cost: (baseTokens * 0.000015).toFixed(4) };
+      });
 
-  const totalInput = tokenUsage.reduce((s, t) => s + t.input, 0);
-  const totalOutput = tokenUsage.reduce((s, t) => s + t.output, 0);
-  const totalCost = tokenUsage.reduce((s, t) => s + parseFloat(t.cost), 0);
+  const totalInput = live ? live.telemetry.totalInput : tokenUsage.reduce((s, t) => s + t.input, 0);
+  const totalOutput = live ? live.telemetry.totalOutput : tokenUsage.reduce((s, t) => s + t.output, 0);
+  const totalCost = live ? live.telemetry.totalCost : tokenUsage.reduce((s, t) => s + parseFloat(t.cost), 0);
 
-  const latencyData = [
-    { label: "Avg response", value: "340ms", status: "good" },
-    { label: "P95 response", value: "890ms", status: "ok" },
-    { label: "P99 response", value: "2.1s", status: "warn" },
-    { label: "Pipeline cycle", value: "12.4s", status: "good" },
-  ];
+  // Latency/efficiency aren't measured from the live run yet — show honest placeholders
+  // in live mode rather than fabricated numbers.
+  const latencyData = live
+    ? [
+        { label: "Avg response", value: "—", status: "ok" },
+        { label: "P95 response", value: "—", status: "ok" },
+        { label: "P99 response", value: "—", status: "ok" },
+        { label: "Pipeline cycle", value: "—", status: "ok" },
+      ]
+    : [
+        { label: "Avg response", value: "340ms", status: "good" },
+        { label: "P95 response", value: "890ms", status: "ok" },
+        { label: "P99 response", value: "2.1s", status: "warn" },
+        { label: "Pipeline cycle", value: "12.4s", status: "good" },
+      ];
 
-  const efficiencyData = [
-    { label: "Handoff success", value: "94%", status: "good" },
-    { label: "Rework rate", value: "12%", status: "ok" },
-    { label: "Blocker resolution", value: "~8 min avg", status: "good" },
-    { label: "Human interventions", value: "3 this session", status: "ok" },
-  ];
+  const efficiencyData = live
+    ? [
+        { label: "Handoff success", value: "—", status: "ok" },
+        { label: "Rework rate", value: "—", status: "ok" },
+        { label: "Blocker resolution", value: "—", status: "ok" },
+        { label: "Human interventions", value: "—", status: "ok" },
+      ]
+    : [
+        { label: "Handoff success", value: "94%", status: "good" },
+        { label: "Rework rate", value: "12%", status: "ok" },
+        { label: "Blocker resolution", value: "~8 min avg", status: "good" },
+        { label: "Human interventions", value: "3 this session", status: "ok" },
+      ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3022,7 +2992,7 @@ function TelemetryView({ clock, pipelineMode }) {
           { label: "TOTAL TOKENS", value: (totalInput + totalOutput).toLocaleString(), sub: `${totalInput.toLocaleString()} in · ${totalOutput.toLocaleString()} out` },
           { label: "SESSION COST", value: `$${totalCost.toFixed(3)}`, sub: `~$${(totalCost * 60).toFixed(2)}/hr projected` },
           { label: "ACTIVE AGENTS", value: agentsData.filter(a => getStatus(getAgentActivity(a, clock)) === "running").length + "/" + agentsData.length, sub: pipelineMode === "stopped" ? "Pipeline stopped" : "Pipeline running" },
-          { label: "UPTIME", value: "47m", sub: "Session duration" },
+          { label: "UPTIME", value: live ? "—" : "47m", sub: "Session duration" },
         ].map(stat => (
           <div key={stat.label} style={{
             flex: 1, background: tokens.surface.raised, boxShadow: tokens.shadow.convex,
@@ -3390,7 +3360,7 @@ function WipPreview({ clock, pipelineMode }) {
 }
 
 // === RIGHT PANEL ===
-function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgent }) {
+function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgent, blockers = projectBlockers, deliverables = projectDeliverables, liveActive = false }) {
   const [selectedDeliverable, setSelectedDeliverable] = useState(null);
   const [reviewMode, setReviewMode] = useState("building"); // "building" | "ready" | "reviewing" | "iterating"
   const [reviewStep, setReviewStep] = useState(0); // which deliverable is being presented
@@ -3402,7 +3372,7 @@ function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgen
   const currentStage = pipelineStages[Math.max(0, currentStageIdx)];
   const isLastStage = currentStageIdx === pipelineStages.length - 1;
 
-  const hasBlockers = projectBlockers.some(b => b.severity === "warn");
+  const hasBlockers = blockers.some(b => b.severity === "warn");
   const allDone = clock > 0.9;
 
   // Transition to "ready" when pipeline completes
@@ -3413,7 +3383,7 @@ function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgen
   }, [allDone, reviewMode]);
 
   // Deliverables that are ready for review (approved or draft)
-  const reviewableDeliverables = projectDeliverables.filter(d => d.status === "approved" || d.status === "draft");
+  const reviewableDeliverables = deliverables.filter(d => d.status === "approved" || d.status === "draft");
   return (
     <div style={{
       width: expanded ? "60%" : 384, flexShrink: 0,
@@ -3469,10 +3439,14 @@ function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgen
         padding: "16px 24px",
         display: "flex", flexDirection: "column", gap: 12,
       }}>
-        <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: tokens.led.error, letterSpacing: "0.08em" }}>
-          NEEDS YOUR ATTENTION
+        <div style={{ fontFamily: tokens.font.mono, fontSize: 9, color: blockers.length === 0 ? tokens.text.muted : tokens.led.error, letterSpacing: "0.08em" }}>
+          {blockers.length === 0 && liveActive ? "STATUS" : "NEEDS YOUR ATTENTION"}
         </div>
-        {projectBlockers.map((b, i) => {
+        {blockers.length === 0 ? (
+          <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.muted, lineHeight: 1.4 }}>
+            {liveActive ? "Nothing needs you right now — blockers and questions from the team will appear here." : "No blockers."}
+          </div>
+        ) : blockers.map((b, i) => {
           // Match blocker agent name to agentsData id (e.g. "CRITIC" → "critic")
           const agentId = agentsData.find(a => a.name === b.agent || a.id === b.agent.toLowerCase())?.id;
           return (
@@ -3525,7 +3499,12 @@ function RightPanel({ expanded, onToggleExpand, clock, pipelineMode, onFocusAgen
           DELIVERABLES
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {projectDeliverables.map((d, i) => {
+          {deliverables.length === 0 && (
+            <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.muted, lineHeight: 1.4 }}>
+              {liveActive ? "Deliverables will appear here as the team ships work." : "No deliverables yet."}
+            </div>
+          )}
+          {deliverables.map((d, i) => {
             const isSelected = selectedDeliverable === i;
             return (
               <div key={i}>
@@ -4505,15 +4484,32 @@ export default function OWL1() {
   // Director console: the designer's first message is the brief that starts the run;
   // later messages steer the team mid-flight ("leave feedback along the way").
   const liveRunStartedRef = useRef(false);
-  useEffect(() => { if (!live.enabled) liveRunStartedRef.current = false; }, [live.enabled]);
+  const [liveBrief, setLiveBrief] = useState("");
+  useEffect(() => { if (!live.enabled) { liveRunStartedRef.current = false; setLiveBrief(""); } }, [live.enabled]);
   const handleDirectorMessage = useCallback((text) => {
     if (!liveRunStartedRef.current) {
       liveRunStartedRef.current = true;
+      setLiveBrief(text);
       postCommand("/command", { type: "run.start", brief: text, mode: "human" });
     } else {
       postCommand("/command", { type: "agent.ask", text });
     }
   }, []);
+
+  // Map live OAP data into the shapes the panels render. In live mode the UI shows
+  // the real run (or honest empty states) instead of the sample fintech project.
+  const prettyAgent = (slug) => {
+    const owl = OWL_ID_BY_OAP[slug] || slug;
+    return agentsData.find(a => a.id === owl)?.name || slug;
+  };
+  const liveBlockers = live.enabled ? live.blockers.map(b => ({ agent: prettyAgent(b.agent), severity: b.severity || "warn", text: b.text })) : null;
+  const liveDeliverables = live.enabled ? live.artifacts.map(a => ({
+    name: a.name,
+    status: a.status === "approved" ? "approved" : a.status === "staged" ? "draft" : "in-progress",
+    agent: prettyAgent(a.agent),
+    preview: a.preview || "",
+  })) : null;
+  const liveProject = live.enabled ? { name: liveBrief ? "Live session" : "New session", brief: liveBrief } : null;
 
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
@@ -4556,14 +4552,14 @@ export default function OWL1() {
             )}
 
             {/* Project header — visible when a project is loaded and not in guide */}
-            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} liveMessages={live.enabled ? live.messages : null} onDirectorSend={live.enabled ? handleDirectorMessage : null} />}
+            {activeView !== "guide" && hasProject && <ProjectHeader clock={clock} liveMessages={live.enabled ? live.messages : null} onDirectorSend={live.enabled ? handleDirectorMessage : null} liveProject={liveProject} />}
 
             {/* === TAB CONTENT: ARRANGEMENT === */}
             {activeTab === "ARRANGEMENT" && activeView !== "guide" && (
               <>
                 {/* Side nav views within Arrangement tab */}
                 {activeView === "projects" && (
-                  <ProjectsView clock={clock} />
+                  <ProjectsView clock={clock} live={live.enabled ? { name: liveProject?.name || "Live session", brief: liveBrief, deliverables: liveDeliverables?.length || 0, blockers: liveBlockers?.length || 0, finished: live.finished } : null} />
                 )}
 
                 {activeView === "tracks" && !hasProject && (
@@ -4578,7 +4574,7 @@ export default function OWL1() {
                     {agentsData.map(agent => {
                       const activity = getAgentActivity(agent, clock);
                       return expandedLane === agent.id ? (
-                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} />
+                        <ExpandedLane key={agent.id} agent={agent} activity={activity} onCollapse={() => toggleLane(agent.id)} pipelineMode={pipelineMode} onApprove={() => handleApprove(agent.id)} onSaveDraft={() => console.log(`Draft saved: ${agent.id}`)} activeBlocker={expandedLane === agent.id ? activeBlocker : null} onDismissBlocker={() => setActiveBlocker(null)} liveMessages={live.enabled ? live.messages : null} />
                       ) : (
                         <CollapsedLane key={agent.id} agent={agent} activity={activity} onClick={() => toggleLane(agent.id)} isExpanded={false} pipelineMode={pipelineMode} />
                       );
@@ -4591,7 +4587,7 @@ export default function OWL1() {
                 )}
 
                 {activeView === "telemetry" && (
-                  <TelemetryView clock={clock} pipelineMode={pipelineMode} />
+                  <TelemetryView clock={clock} pipelineMode={pipelineMode} live={live.enabled ? { telemetry: live.telemetry } : null} />
                 )}
               </>
             )}
@@ -4625,7 +4621,7 @@ export default function OWL1() {
           display: "flex",
           minHeight: 0,
         }}>
-          <RightPanel expanded={wipExpanded} onToggleExpand={() => setWipExpanded(prev => !prev)} clock={clock} pipelineMode={pipelineMode} onFocusAgent={(agentId, blockerInfo) => {
+          <RightPanel expanded={wipExpanded} onToggleExpand={() => setWipExpanded(prev => !prev)} clock={clock} pipelineMode={pipelineMode} blockers={live.enabled ? liveBlockers : undefined} deliverables={live.enabled ? liveDeliverables : undefined} liveActive={live.enabled} onFocusAgent={(agentId, blockerInfo) => {
             setActiveTab("ARRANGEMENT");
             setActiveView("tracks");
             setExpandedLane(agentId);

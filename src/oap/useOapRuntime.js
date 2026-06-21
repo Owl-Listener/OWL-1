@@ -58,6 +58,7 @@ export function useOapRuntime({ enabled = false, url = '/events', source = null 
     blockers: oapState.blockers,
     artifacts: oapState.artifacts,
     gates: oapState.gates,
+    telemetry: oapState.telemetry,
     finished: oapState.finished,
     raw: oapState,
   };

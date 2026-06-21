@@ -11,6 +11,7 @@ export function initialOapState() {
     artifacts: [], // { id, name, status, agent, preview, ... }
     blockers: [], // { id, agent, severity, text, cta, stage }
     gates: [], // { gateId, agentId, kind, fromAgent, context, stage }
+    telemetry: { byAgent: {}, totalInput: 0, totalOutput: 0, totalCost: 0 },
     finished: false,
     seq: 0,
   };
@@ -90,8 +91,27 @@ export function oapReduce(state, env) {
       next.gates = state.gates.filter((g) => g.gateId !== p.gateId);
       return next;
 
+    case 'telemetry.tick': {
+      const id = p.agentId || 'unknown';
+      const prev = state.telemetry.byAgent[id] || { input: 0, output: 0, cost: 0 };
+      next.telemetry = {
+        byAgent: {
+          ...state.telemetry.byAgent,
+          [id]: {
+            input: prev.input + (p.inputTokens || 0),
+            output: prev.output + (p.outputTokens || 0),
+            cost: prev.cost + (p.costUsd || 0),
+          },
+        },
+        totalInput: state.telemetry.totalInput + (p.inputTokens || 0),
+        totalOutput: state.telemetry.totalOutput + (p.outputTokens || 0),
+        totalCost: state.telemetry.totalCost + (p.costUsd || 0),
+      };
+      return next;
+    }
+
     default:
-      return state; // telemetry.tick, memory.changed, command.* — ignored by this slice
+      return state; // memory.changed, command.* — ignored by this slice
   }
 }
 
