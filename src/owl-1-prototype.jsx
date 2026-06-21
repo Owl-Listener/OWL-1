@@ -2028,8 +2028,55 @@ function AgentsPanel({ clock, pipelineMode, onSelectAgent }) {
 // Agent management console. Full profile card for each agent showing role,
 // description, capabilities, handoff graph, pipeline stage, and current status.
 // Also includes an "Add Agent" card for extensibility.
-function AgentConsoleView({ clock, pipelineMode }) {
+function CreateAgentModal({ open, onClose, onCreate }) {
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [stage, setStage] = useState("design");
+  const [handsTo, setHandsTo] = useState("");
+  const [prompt, setPrompt] = useState("");
+  if (!open) return null;
+  const canCreate = name.trim().length > 1;
+  const submit = () => {
+    if (!canCreate) return;
+    onCreate({
+      name: name.trim(), role: role.trim(), desc: role.trim(), stage,
+      handsTo: handsTo.split(",").map(s => s.trim()).filter(Boolean),
+      prompt: prompt.trim(),
+    });
+    setName(""); setRole(""); setStage("design"); setHandsTo(""); setPrompt("");
+  };
+  const field = { width: "100%", boxSizing: "border-box", border: "none", outline: "none", background: tokens.surface.inset, boxShadow: tokens.shadow.concave, borderRadius: tokens.radius.inset, padding: "10px 12px", fontFamily: tokens.font.sans, fontSize: 12, color: tokens.text.primary, marginTop: 4 };
+  const label = { fontFamily: tokens.font.mono, fontSize: 9, color: tokens.text.muted, letterSpacing: "0.06em" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 520, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto", background: tokens.surface.raised, boxShadow: tokens.shadow.convex, borderRadius: tokens.radius.panel, padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontFamily: tokens.font.mono, fontSize: 11, color: tokens.text.secondary, letterSpacing: "0.08em" }}>NEW AGENT</div>
+        <div style={{ fontFamily: tokens.font.sans, fontSize: 11, color: tokens.text.secondary, lineHeight: 1.5 }}>
+          Define a custom agent. It's written into the Designpowers team and joins the pipeline — your director can dispatch it by name on the next run.
+        </div>
+        <div><div style={label}>NAME</div><input style={field} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Brand Strategist" /></div>
+        <div><div style={label}>ROLE</div><input style={field} value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Brand voice & positioning" /></div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}><div style={label}>STAGE</div>
+            <select style={field} value={stage} onChange={e => setStage(e.target.value)}>
+              {pipelineStages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}><div style={label}>HANDS OFF TO</div><input style={field} value={handsTo} onChange={e => setHandsTo(e.target.value)} placeholder="design-lead, design-builder" /></div>
+        </div>
+        <div><div style={label}>PROMPT</div><textarea style={{ ...field, minHeight: 90, resize: "vertical", fontFamily: tokens.font.mono }} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="You are a ... You do ... Write a short handoff note when done." /></div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" onClick={onClose}>CANCEL</Button>
+          <Button variant="primary" onClick={submit}>CREATE AGENT</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentConsoleView({ clock, pipelineMode, onCreateAgent }) {
   const [expandedAgent, setExpandedAgent] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Extended agent info — what each agent does, its capabilities, and how it's used
   const agentProfiles = {
@@ -2121,7 +2168,7 @@ function AgentConsoleView({ clock, pipelineMode }) {
             {agentsData.length} agents in the pipeline. Click any agent to see its full profile, capabilities, and handoff relationships.
           </div>
         </div>
-        <Button variant="primary" onClick={() => {}}>+ ADD AGENT</Button>
+        <Button variant="primary" onClick={() => setCreateOpen(true)}>+ ADD AGENT</Button>
       </div>
 
       {/* Agent cards */}
@@ -2310,7 +2357,7 @@ function AgentConsoleView({ clock, pipelineMode }) {
       })}
 
       {/* Add Agent card */}
-      <div className="neo-btn" style={{
+      <div className="neo-btn" onClick={() => setCreateOpen(true)} style={{
         background: tokens.surface.raised, boxShadow: tokens.shadow.convex,
         borderRadius: tokens.radius.panel, padding: 32,
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -2332,6 +2379,8 @@ function AgentConsoleView({ clock, pipelineMode }) {
           It will join the pipeline at the stage you assign.
         </span>
       </div>
+
+      <CreateAgentModal open={createOpen} onClose={() => setCreateOpen(false)} onCreate={(form) => { onCreateAgent && onCreateAgent(form); setCreateOpen(false); }} />
     </div>
   );
 }
@@ -2476,8 +2525,7 @@ function NodesView({ clock, pipelineMode }) {
 
           {/* Nodes */}
           {agentsData.map((agent, idx) => {
-            const pos = nodePositions[agent.id];
-            if (!pos) return null;
+            const pos = nodePositions[agent.id] || { x: 100 + ((idx - 10) % 5) * 150, y: 610 + Math.floor(Math.max(0, idx - 10) / 5) * 120 };
             const activity = getAgentActivity(agent, clock);
             const status = getStatus(activity);
             const isActive = status === "running" && isRunning;
@@ -2542,7 +2590,7 @@ function NodesView({ clock, pipelineMode }) {
                   opacity={isHovered ? 0.8 : 0}
                   style={{ transition: "opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1)", pointerEvents: "none" }}
                 >
-                  {agentRoles[agent.id] || ""}
+                  {agentRoles[agent.id] || (agent.custom ? "Custom agent" : "")}
                 </text>
               </g>
             );
@@ -2571,7 +2619,7 @@ function NodesView({ clock, pipelineMode }) {
 
 // === PROJECTS VIEW ===
 // Project list with status indicators, brief, and quick stats.
-function ProjectsView({ clock, live }) {
+function ProjectsView({ clock, live, onNewProject }) {
   // In live mode, the only project is the current real session.
   const projects = live
     ? [{
@@ -2626,7 +2674,7 @@ function ProjectsView({ clock, live }) {
               {projects.filter(p => p.status === "active").length} active · {projects.filter(p => p.status === "paused").length} paused · {projects.filter(p => p.status === "completed").length} completed
             </div>
           </div>
-          <Button variant="secondary" onClick={() => {}}>+ NEW PROJECT</Button>
+          <Button variant="secondary" onClick={onNewProject}>+ NEW PROJECT</Button>
         </div>
       </div>
 
@@ -4511,6 +4559,42 @@ export default function OWL1() {
   })) : null;
   const liveProject = live.enabled ? { name: liveBrief ? "Live session" : "New session", brief: liveBrief } : null;
 
+  // Editable team: custom agents are written into Designpowers by the backend and
+  // pushed into the (module-level) roster so every view shows them. rosterVersion
+  // forces a re-render when the roster changes.
+  const [rosterVersion, setRosterVersion] = useState(0);
+  const addToRoster = (a) => {
+    const id = (a.id || a.name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!id || agentsData.some(x => x.id === id)) return false;
+    agentsData.push({
+      id, name: a.name || id, desc: a.desc || a.role || "Custom design agent",
+      phase: 0.5, duration: 0.2, receives: [], handsTo: a.handsTo || [],
+      stage: (a.stage || "design").toUpperCase(), custom: true,
+    });
+    return true;
+  };
+  // Hydrate custom agents created in earlier sessions.
+  useEffect(() => {
+    if (!live.enabled) return;
+    fetch("/agents").then(r => r.json()).then(list => {
+      let added = false;
+      for (const a of (list || [])) added = addToRoster(a) || added;
+      if (added) setRosterVersion(v => v + 1);
+    }).catch(() => {});
+  }, [live.enabled]);
+
+  const handleCreateAgent = useCallback((form) => {
+    if (addToRoster(form)) setRosterVersion(v => v + 1);
+    if (live.enabled) postCommand("/command", { type: "agent.create", agent: form });
+  }, [live.enabled]);
+
+  const handleNewProject = useCallback(() => {
+    if (live.enabled) { postCommand("/command", { type: "run.reset" }); liveRunStartedRef.current = false; setLiveBrief(""); }
+    setExpandedLane(null); setActiveBlocker(null);
+    setActiveTab("ARRANGEMENT"); setActiveView("tracks"); setHasProject(true);
+    if (!live.enabled) { setPipelineMode("stopped"); setClock(0); }
+  }, [live.enabled]);
+
   const toggleLane = useCallback((id) => {
     setExpandedLane(prev => {
       const isCollapsing = prev === id;
@@ -4559,7 +4643,7 @@ export default function OWL1() {
               <>
                 {/* Side nav views within Arrangement tab */}
                 {activeView === "projects" && (
-                  <ProjectsView clock={clock} live={live.enabled ? { name: liveProject?.name || "Live session", brief: liveBrief, deliverables: liveDeliverables?.length || 0, blockers: liveBlockers?.length || 0, finished: live.finished } : null} />
+                  <ProjectsView clock={clock} live={live.enabled ? { name: liveProject?.name || "Live session", brief: liveBrief, deliverables: liveDeliverables?.length || 0, blockers: liveBlockers?.length || 0, finished: live.finished } : null} onNewProject={handleNewProject} />
                 )}
 
                 {activeView === "tracks" && !hasProject && (
@@ -4594,7 +4678,7 @@ export default function OWL1() {
 
             {/* === TAB CONTENT: AGENTS === */}
             {activeTab === "AGENTS" && activeView !== "guide" && (
-              <AgentConsoleView clock={clock} pipelineMode={pipelineMode} />
+              <AgentConsoleView clock={clock} pipelineMode={pipelineMode} onCreateAgent={handleCreateAgent} />
             )}
 
             {/* === TAB CONTENT: NODES === */}
