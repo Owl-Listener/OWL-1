@@ -228,6 +228,10 @@ export async function runDesignpowers({ session, gates, brief, mode, workspace, 
   try {
     for await (const msg of query({ prompt: prompt(), options })) {
       translate(msg, session, () => currentAgent);
+      // A `result` marks the end of the orchestrator's pass. Close the input stream
+      // so the run completes (and emits run.finished) instead of hanging open
+      // forever waiting for more director messages.
+      if (msg.type === 'result') inputQueue.close();
     }
   } catch (err) {
     session.emitEvent('message', { id: nextMessageId(), kind: 'system', text: `Run error: ${err?.message || err}` });

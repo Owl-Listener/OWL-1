@@ -4538,11 +4538,13 @@ export default function OWL1() {
     if (!liveRunStartedRef.current) {
       liveRunStartedRef.current = true;
       setLiveBrief(text);
-      postCommand("/command", { type: "run.start", brief: text, mode: "human" });
+      // The run honours the transport mode: AUTO (playing) runs hands-free,
+      // anything else pauses at each handoff for your approval.
+      postCommand("/command", { type: "run.start", brief: text, mode: pipelineMode === "playing" ? "auto" : "human" });
     } else {
       postCommand("/command", { type: "agent.ask", text });
     }
-  }, []);
+  }, [pipelineMode]);
 
   // Map live OAP data into the shapes the panels render. In live mode the UI shows
   // the real run (or honest empty states) instead of the sample fintech project.
